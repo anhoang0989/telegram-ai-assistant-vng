@@ -25,10 +25,10 @@ MAX_HISTORY_TURNS = 20
 MAX_AGENTIC_STEPS = 5   # an toàn — tránh vòng lặp tool vô hạn
 
 TIERS = [
-    {"model": settings.model_tier1, "provider": "gemini"},
-    {"model": settings.model_tier2, "provider": "gemini"},
-    {"model": settings.model_tier3, "provider": "gemini"},
-    {"model": settings.model_tier4, "provider": "groq"},
+    {"model": settings.llm_tier1, "provider": "gemini"},
+    {"model": settings.llm_tier2, "provider": "gemini"},
+    {"model": settings.llm_tier3, "provider": "gemini"},
+    {"model": settings.llm_tier4, "provider": "groq"},
 ]
 
 

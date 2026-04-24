@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     scheduler_timezone: str = "Asia/Ho_Chi_Minh"
 
     # Model names — configurable so free-tier names can be updated without code changes
-    model_tier1: str = "gemini-2.5-flash-lite-preview-06-17"
-    model_tier2: str = "gemini-2.5-flash"
-    model_tier3: str = "gemini-2.5-pro"
-    model_tier4: str = "llama-3.3-70b-versatile"  # Groq
+    llm_tier1: str = "gemini-2.5-flash-lite-preview-06-17"
+    llm_tier2: str = "gemini-2.5-flash"
+    llm_tier3: str = "gemini-2.5-pro"
+    llm_tier4: str = "llama-3.3-70b-versatile"  # Groq
 
     @property
     def allowed_user_ids_list(self) -> list[int]:
