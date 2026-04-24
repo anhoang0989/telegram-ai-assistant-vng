@@ -66,7 +66,7 @@ async def _call_with_fallback(
             logger.warning(f"[{user_id}] Tier {i} ({model}) failed: {e}. Trying next tier")
             continue
 
-    return "⚠️ Tất cả AI providers đang bận hoặc key của bạn đã hết quota. Thử lại sau nhé.", None, "none"
+    return "⚠️ Tất cả AI providers đang bận hoặc key của đại hiệp đã hết quota. Xin thử lại sau.", None, "none"
 
 
 async def chat(
@@ -96,7 +96,7 @@ async def chat(
         last_model = model
 
         if not tool_calls:
-            return text.strip() or "Tao chưa rõ ý mày, nói lại cụ thể hơn nhé?", last_model
+            return text.strip() or "Tại hạ chưa rõ ý đại hiệp, xin nói lại cụ thể hơn.", last_model
 
         messages.append({"role": "assistant", "content": text, "tool_calls": tool_calls})
 
@@ -111,4 +111,4 @@ async def chat(
             })
 
     logger.warning(f"[{user_id}] Hit MAX_AGENTIC_STEPS={MAX_AGENTIC_STEPS}")
-    return "Tao đã xử lý xong nhưng cần thêm bước. Thử hỏi lại nhé.", last_model
+    return "Tại hạ đã xử lý xong nhưng cần thêm bước. Xin đại hiệp hỏi lại.", last_model

@@ -1,6 +1,6 @@
-import asyncio
 import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import BotCommand
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from src.config import settings
 from src.bot.commands import (
     start_command,
@@ -9,7 +9,10 @@ from src.bot.commands import (
     setkey_command,
     mykey_command,
     removekey_command,
+    cancel_command,
+    pending_command,
 )
+from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
 from src.bot.middleware import auth_middleware
 from src.scheduler.reminder_runner import init_scheduler
@@ -38,7 +41,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setkey", wrap(setkey_command)))
     app.add_handler(CommandHandler("mykey", wrap(mykey_command)))
     app.add_handler(CommandHandler("removekey", wrap(removekey_command)))
+    app.add_handler(CommandHandler("cancel", wrap(cancel_command)))
+    app.add_handler(CommandHandler("pending", wrap(pending_command)))
 
+    app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
     return app
 
@@ -49,10 +55,24 @@ async def init_db() -> None:
     logger.info("DB tables ready.")
 
 
+async def set_bot_menu(app: Application) -> None:
+    commands = [
+        BotCommand("start", "Bắt đầu / đăng ký"),
+        BotCommand("setkey", "Nhập API key (Gemini/Groq)"),
+        BotCommand("mykey", "Xem trạng thái API keys"),
+        BotCommand("removekey", "Xoá API keys"),
+        BotCommand("status", "Xem quota còn lại"),
+        BotCommand("help", "Hướng dẫn"),
+        BotCommand("cancel", "Huỷ flow đang chờ input"),
+    ]
+    await app.bot.set_my_commands(commands)
+
+
 async def post_init(app: Application) -> None:
     await init_db()
+    await set_bot_menu(app)
     init_scheduler(app.bot)
-    logger.info("Bot started (multi-tenant BYOK mode).")
+    logger.info(f"Bot started (multi-tenant BYOK). Admin: {settings.admin_user_id}")
 
 
 def main() -> None:

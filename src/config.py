@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     database_url: str
     encryption_key: str  # Fernet key for encrypting user API keys
+    admin_user_id: int  # Telegram user_id của admin (approve/reject users)
     bot_mode: str = "polling"
     webhook_url: str = ""
     webhook_port: int = 8443
