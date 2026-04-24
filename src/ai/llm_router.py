@@ -1,5 +1,5 @@
 """
-LLM Router + Agentic Loop.
+LLM Router + Agentic Loop (BYOK edition).
 
 Flow:
   1. Build messages từ DB history + tin nhắn mới
@@ -7,7 +7,7 @@ Flow:
   3. Nếu LLM trả tool_calls → execute → feed kết quả ngược lại → gọi LLM lại
   4. Lặp đến khi LLM không gọi tool nữa, trả về text cuối cùng cho user
 
-Tier fallback: quota hết của model nào → nhảy sang model tier kế tiếp trong chuỗi.
+Quota + keys phân theo user_id → mỗi người free tier riêng.
 """
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +20,9 @@ from src.bot.tool_dispatcher import dispatch_tool
 
 logger = logging.getLogger(__name__)
 
-MAX_INPUT_CHARS = 8000  # tăng để nhận được meeting transcript
+MAX_INPUT_CHARS = 8000
 MAX_HISTORY_TURNS = 20
-MAX_AGENTIC_STEPS = 5   # an toàn — tránh vòng lặp tool vô hạn
+MAX_AGENTIC_STEPS = 5
 
 TIERS = [
     {"model": settings.llm_tier1, "provider": "gemini"},
@@ -32,51 +32,57 @@ TIERS = [
 ]
 
 
-async def _call_tier(tier: dict, messages: list[dict]) -> tuple[str, list[dict] | None]:
+async def _call_tier(
+    tier: dict,
+    messages: list[dict],
+    gemini_key: str,
+    groq_key: str,
+) -> tuple[str, list[dict] | None]:
     if tier["provider"] == "gemini":
-        return await call_gemini(tier["model"], messages, TOOLS)
-    return await call_groq(tier["model"], messages, TOOLS)
+        return await call_gemini(gemini_key, tier["model"], messages, TOOLS)
+    return await call_groq(groq_key, tier["model"], messages, TOOLS)
 
 
 async def _call_with_fallback(
+    user_id: int,
     messages: list[dict],
     start_tier: int,
+    gemini_key: str,
+    groq_key: str,
 ) -> tuple[str, list[dict] | None, str]:
-    """Try tiers from start_tier downward until one succeeds. Returns (text, tool_calls, model_used)."""
     for i in range(start_tier, len(TIERS)):
         tier = TIERS[i]
         model = tier["model"]
 
-        if not quota_tracker.available(model):
-            logger.info(f"Tier {i} ({model}) quota exhausted, falling back")
+        if not quota_tracker.available(user_id, model):
+            logger.info(f"[{user_id}] Tier {i} ({model}) quota exhausted, falling back")
             continue
 
         try:
-            quota_tracker.record(model)
-            text, tool_calls = await _call_tier(tier, messages)
+            quota_tracker.record(user_id, model)
+            text, tool_calls = await _call_tier(tier, messages, gemini_key, groq_key)
             return text, tool_calls, model
         except Exception as e:
-            logger.warning(f"Tier {i} ({model}) failed: {e}. Trying next tier")
+            logger.warning(f"[{user_id}] Tier {i} ({model}) failed: {e}. Trying next tier")
             continue
 
-    return "⚠️ Tất cả AI providers đang bận. Thử lại sau nhé.", None, "none"
+    return "⚠️ Tất cả AI providers đang bận hoặc key của bạn đã hết quota. Thử lại sau nhé.", None, "none"
 
 
 async def chat(
     session: AsyncSession,
+    user_id: int,
     db_history: list[dict],
     user_message: str,
+    gemini_key: str,
+    groq_key: str,
 ) -> tuple[str, str]:
-    """
-    Main entry point. Runs agentic loop with tool use.
-    Returns (final_text, model_used).
-    """
+    """Main entry point. Runs agentic loop with tool use. Returns (final_text, model_used)."""
     user_message = user_message[:MAX_INPUT_CHARS]
     complexity = classify(user_message)
     start_tier = COMPLEXITY_START[complexity]
-    logger.info(f"complexity={complexity} start_tier={start_tier} msg_len={len(user_message)}")
+    logger.info(f"[{user_id}] complexity={complexity} start_tier={start_tier} msg_len={len(user_message)}")
 
-    # Build working messages list (will grow during agentic loop)
     messages: list[dict] = []
     for m in db_history[-(MAX_HISTORY_TURNS * 2):]:
         messages.append({"role": m["role"], "content": m["content"]})
@@ -84,20 +90,19 @@ async def chat(
 
     last_model = "none"
     for step in range(MAX_AGENTIC_STEPS):
-        text, tool_calls, model = await _call_with_fallback(messages, start_tier)
+        text, tool_calls, model = await _call_with_fallback(
+            user_id, messages, start_tier, gemini_key, groq_key,
+        )
         last_model = model
 
         if not tool_calls:
-            # Done — LLM gave final text response
             return text.strip() or "Tao chưa rõ ý mày, nói lại cụ thể hơn nhé?", last_model
 
-        # Record assistant's turn with tool calls
         messages.append({"role": "assistant", "content": text, "tool_calls": tool_calls})
 
-        # Execute each tool and append result
         for tc in tool_calls:
-            logger.info(f"Tool call: {tc['name']}({tc['input']})")
-            result = await dispatch_tool(session, tc["name"], tc["input"])
+            logger.info(f"[{user_id}] Tool call: {tc['name']}({tc['input']})")
+            result = await dispatch_tool(session, user_id, tc["name"], tc["input"])
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
@@ -105,9 +110,5 @@ async def chat(
                 "result": result,
             })
 
-        # After first tool call, subsequent calls can stay on same tier
-        # (don't re-run classifier — we're in an agentic flow)
-
-    # If we hit max steps, return whatever text we have
-    logger.warning(f"Hit MAX_AGENTIC_STEPS={MAX_AGENTIC_STEPS}")
+    logger.warning(f"[{user_id}] Hit MAX_AGENTIC_STEPS={MAX_AGENTIC_STEPS}")
     return "Tao đã xử lý xong nhưng cần thêm bước. Thử hỏi lại nhé.", last_model

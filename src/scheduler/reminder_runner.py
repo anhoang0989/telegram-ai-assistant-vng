@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -10,16 +9,13 @@ from src.services.schedule_service import format_reminder
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
-_bot = None  # set at startup
-_chat_id: int | None = None  # the allowed user's chat_id
+_bot = None
 
 
-def init_scheduler(bot, chat_id: int) -> AsyncIOScheduler:
-    global _scheduler, _bot, _chat_id
+def init_scheduler(bot) -> AsyncIOScheduler:
+    global _scheduler, _bot
     _bot = bot
-    _chat_id = chat_id
 
-    # Use sync PostgreSQL URL for APScheduler jobstore (strip +asyncpg)
     sync_url = settings.database_url.replace("+asyncpg", "")
     jobstores = {"default": SQLAlchemyJobStore(url=sync_url)}
 
@@ -40,15 +36,15 @@ def init_scheduler(bot, chat_id: int) -> AsyncIOScheduler:
 
 
 async def check_and_fire_reminders() -> None:
-    if _bot is None or _chat_id is None:
+    if _bot is None:
         return
     async with AsyncSessionFactory() as session:
         pending = await repo.get_pending_unnotified(session)
         for schedule in pending:
             try:
                 text = await format_reminder(schedule)
-                await _bot.send_message(chat_id=_chat_id, text=text, parse_mode="Markdown")
+                await _bot.send_message(chat_id=schedule.user_id, text=text, parse_mode="Markdown")
                 await repo.mark_notified(session, schedule.id)
-                logger.info(f"Reminder sent: {schedule.title}")
+                logger.info(f"Reminder sent to {schedule.user_id}: {schedule.title}")
             except Exception as e:
                 logger.error(f"Failed to send reminder {schedule.id}: {e}")

@@ -1,7 +1,9 @@
 """
-Dispatch tool calls → services. Trả về STRUCTURED dict để AI có thể feed-back làm response tự nhiên.
+Dispatch tool calls → services. All calls scoped per user_id (multi-tenant).
+Returns STRUCTURED dict so the LLM can feed-back to build natural responses.
 """
 import logging
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zoneinfo import ZoneInfo
 from src.config import settings
@@ -13,15 +15,17 @@ logger = logging.getLogger(__name__)
 TZ = ZoneInfo(settings.scheduler_timezone)
 
 
-async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict) -> dict:
-    """
-    Execute a tool and return structured result.
-    Return dict gets serialized to JSON and fed back to the LLM.
-    """
+async def dispatch_tool(
+    session: AsyncSession,
+    user_id: int,
+    tool_name: str,
+    tool_input: dict,
+) -> dict:
     try:
         if tool_name == "save_note":
             note = await note_service.save_note(
                 session,
+                user_id=user_id,
                 title=tool_input["title"],
                 content=tool_input["content"],
                 tags=tool_input.get("tags"),
@@ -29,7 +33,7 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
             return {"ok": True, "id": note.id, "title": note.title}
 
         elif tool_name == "search_notes":
-            notes = await notes_repo.search(session, tool_input["query"])
+            notes = await notes_repo.search(session, user_id, tool_input["query"])
             return {
                 "ok": True,
                 "count": len(notes),
@@ -47,7 +51,7 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
 
         elif tool_name == "list_notes":
             limit = tool_input.get("limit", 10)
-            notes = await notes_repo.list_all(session, limit=limit)
+            notes = await notes_repo.list_all(session, user_id, limit=limit)
             return {
                 "ok": True,
                 "count": len(notes),
@@ -65,6 +69,7 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
         elif tool_name == "create_schedule":
             schedule = await schedule_service.create_schedule(
                 session,
+                user_id=user_id,
                 title=tool_input["title"],
                 scheduled_at_str=tool_input["scheduled_at"],
                 description=tool_input.get("description"),
@@ -80,7 +85,7 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
 
         elif tool_name == "list_schedules":
             days = tool_input.get("days_ahead", 7)
-            schedules = await sched_repo.get_upcoming(session, days_ahead=days)
+            schedules = await sched_repo.get_upcoming(session, user_id, days_ahead=days)
             return {
                 "ok": True,
                 "count": len(schedules),
@@ -97,18 +102,18 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
             }
 
         elif tool_name == "delete_schedule":
-            deleted = await sched_repo.delete(session, tool_input["schedule_id"])
+            deleted = await sched_repo.delete(session, user_id, tool_input["schedule_id"])
             return {"ok": deleted, "id": tool_input["schedule_id"]}
 
         elif tool_name == "save_meeting_summary":
             meeting = MeetingMinute(
+                user_id=user_id,
                 title=tool_input["title"],
                 raw_input=tool_input["raw_input"],
                 summary=tool_input["summary"],
                 action_items=tool_input.get("action_items", []),
                 recommendations=tool_input.get("recommendations", []),
             )
-            # Store counterarguments inside recommendations structure if provided
             if tool_input.get("counterarguments"):
                 meeting.recommendations = {
                     "recommendations": tool_input.get("recommendations", []),
@@ -120,10 +125,12 @@ async def dispatch_tool(session: AsyncSession, tool_name: str, tool_input: dict)
             return {"ok": True, "id": meeting.id, "title": meeting.title}
 
         elif tool_name == "list_meetings":
-            from sqlalchemy import select
             limit = tool_input.get("limit", 10)
             result = await session.execute(
-                select(MeetingMinute).order_by(MeetingMinute.created_at.desc()).limit(limit)
+                select(MeetingMinute)
+                .where(MeetingMinute.user_id == user_id)
+                .order_by(MeetingMinute.created_at.desc())
+                .limit(limit)
             )
             meetings = list(result.scalars().all())
             return {

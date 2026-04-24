@@ -7,3 +7,4 @@ alembic==1.14.0
 apscheduler==3.10.4
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
+cryptography==43.0.3

@@ -1,10 +1,20 @@
+import asyncio
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from src.config import settings
-from src.bot.commands import start_command, help_command, status_command
+from src.bot.commands import (
+    start_command,
+    help_command,
+    status_command,
+    setkey_command,
+    mykey_command,
+    removekey_command,
+)
 from src.bot.handlers.chat import chat_handler
 from src.bot.middleware import auth_middleware
 from src.scheduler.reminder_runner import init_scheduler
+from src.db.session import engine
+from src.db.models import Base
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -22,21 +32,27 @@ def wrap(handler_func):
 def build_app() -> Application:
     app = Application.builder().token(settings.telegram_bot_token).build()
 
-    # Minimal commands
     app.add_handler(CommandHandler("start", wrap(start_command)))
     app.add_handler(CommandHandler("help", wrap(help_command)))
     app.add_handler(CommandHandler("status", wrap(status_command)))
+    app.add_handler(CommandHandler("setkey", wrap(setkey_command)))
+    app.add_handler(CommandHandler("mykey", wrap(mykey_command)))
+    app.add_handler(CommandHandler("removekey", wrap(removekey_command)))
 
-    # Everything else goes through chat handler (natural conversation)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
-
     return app
 
 
+async def init_db() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("DB tables ready.")
+
+
 async def post_init(app: Application) -> None:
-    user_id = settings.allowed_user_ids_list[0]
-    init_scheduler(app.bot, chat_id=user_id)
-    logger.info(f"Bot started. Allowed users: {settings.allowed_user_ids_list}")
+    await init_db()
+    init_scheduler(app.bot)
+    logger.info("Bot started (multi-tenant BYOK mode).")
 
 
 def main() -> None:

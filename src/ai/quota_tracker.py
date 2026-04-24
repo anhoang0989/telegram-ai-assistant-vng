@@ -1,14 +1,17 @@
+"""
+Per-user quota tracker. Each user's free-tier limit is tracked independently
+since they use their own API keys (BYOK).
+"""
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-# Gemini free tier limits (conservative estimates)
-# Actual limits: https://ai.google.dev/pricing
+# Free tier limits per user per model
 DEFAULT_LIMITS = {
     "gemini-2.5-flash-lite-preview-06-17": {"rpm": 30, "rpd": 1500},
     "gemini-2.5-flash":                    {"rpm": 15, "rpd": 1500},
     "gemini-2.5-pro":                      {"rpm": 5,  "rpd": 25},
-    "llama-3.3-70b-versatile":             {"rpm": 30, "rpd": 14400},  # Groq free
+    "llama-3.3-70b-versatile":             {"rpm": 30, "rpd": 14400},
 }
 
 
@@ -35,24 +38,33 @@ class ModelQuota:
 
 
 class QuotaTracker:
+    """Nested dict: user_id → model_name → ModelQuota."""
+
     def __init__(self) -> None:
-        self._quotas: dict[str, ModelQuota] = {
+        self._user_quotas: dict[int, dict[str, ModelQuota]] = defaultdict(self._build_user_quotas)
+
+    @staticmethod
+    def _build_user_quotas() -> dict[str, ModelQuota]:
+        return {
             name: ModelQuota(rpm=limits["rpm"], rpd=limits["rpd"])
             for name, limits in DEFAULT_LIMITS.items()
         }
 
-    def available(self, model: str) -> bool:
-        if model not in self._quotas:
-            return True  # Unknown model — optimistically allow
-        return self._quotas[model].available()
+    def available(self, user_id: int, model: str) -> bool:
+        quotas = self._user_quotas[user_id]
+        if model not in quotas:
+            return True
+        return quotas[model].available()
 
-    def record(self, model: str) -> None:
-        if model in self._quotas:
-            self._quotas[model].record()
+    def record(self, user_id: int, model: str) -> None:
+        quotas = self._user_quotas[user_id]
+        if model in quotas:
+            quotas[model].record()
 
-    def status(self) -> dict[str, dict]:
+    def status(self, user_id: int) -> dict[str, dict]:
+        quotas = self._user_quotas[user_id]
         result = {}
-        for name, q in self._quotas.items():
+        for name, q in quotas.items():
             q._prune()
             result[name] = {
                 "rpm_used": len(q._minute_calls),
@@ -63,5 +75,4 @@ class QuotaTracker:
         return result
 
 
-# Singleton — shared across the process
 quota_tracker = QuotaTracker()
