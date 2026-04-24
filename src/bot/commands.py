@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 WELCOME_TEXT = (
     "🙏 Xin chào đại hiệp, tại hạ là trợ lý AI phục vụ đại hiệp trong giang hồ vận hành game.\n\n"
-    "Để bắt đầu, xin đại hiệp gửi *email công ty hoặc domain* của mình trong tin nhắn tiếp theo "
-    "(vd: `anh@vng.com.vn` hoặc `vnggames.com`).\n\n"
+    "Để bắt đầu, xin đại hiệp gửi *Domain* (mã nhân viên VNG) của mình trong tin nhắn tiếp theo "
+    "(vd: `AnH`, `TuVH`).\n\n"
     "Tại hạ sẽ chuyển yêu cầu tới admin để duyệt."
 )
 
@@ -61,7 +61,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "⏳ Yêu cầu của đại hiệp (`"
             + (row.email_or_domain or "")
             + "`) đang chờ tại hạ duyệt.\n"
-            "Muốn đổi email? Cứ gửi email/domain mới vào tin nhắn tiếp theo.",
+            "Muốn đổi Domain? Cứ gửi Domain mới vào tin nhắn tiếp theo.",
             parse_mode="Markdown",
         )
         context.user_data["awaiting_email"] = True
@@ -70,7 +70,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if row and row.status == "rejected":
         await update.message.reply_text(
             "⛔ Yêu cầu trước đây của đại hiệp đã bị từ chối.\n"
-            "Đại hiệp có thể thử lại bằng cách gửi email/domain khác."
+            "Đại hiệp có thể thử lại bằng cách gửi Domain khác."
         )
         context.user_data["awaiting_email"] = True
         return
@@ -176,8 +176,8 @@ async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         uname = f"@{r.username}" if r.username else "(no username)"
         text = (
             f"👤 *{r.full_name or 'Không rõ tên'}* {uname}\n"
-            f"🆔 `{r.user_id}`\n"
-            f"📧 `{r.email_or_domain}`\n"
+            f"🆔 Telegram ID: `{r.user_id}`\n"
+            f"🏷️ Domain: `{r.email_or_domain}`\n"
             f"🕐 {r.created_at.strftime('%d/%m/%Y %H:%M')}"
         )
         await update.message.reply_text(

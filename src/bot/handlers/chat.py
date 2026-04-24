@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_MSG = 4000
 
-EMAIL_OR_DOMAIN_RE = re.compile(r"^[A-Za-z0-9._%+\-]+(?:@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}|\.[A-Za-z]{2,})$")
+DOMAIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,19}$")
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -82,11 +82,11 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     user = update.effective_user
-    text = text.strip().lower()
+    text = text.strip()
 
-    if not EMAIL_OR_DOMAIN_RE.match(text):
+    if not DOMAIN_RE.match(text):
         await update.message.reply_text(
-            "⚠️ Email/domain không hợp lệ. Thử lại (vd: `anh@vng.com.vn` hoặc `vnggames.com`):",
+            "⚠️ Domain không hợp lệ. Chỉ gồm chữ/số, 2-20 ký tự. Thử lại (vd: `AnH`, `TuVH`):",
             parse_mode="Markdown",
         )
         return
@@ -104,7 +104,7 @@ async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
 
     await update.message.reply_text(
         "✅ Tại hạ đã nhận yêu cầu của đại hiệp.\n"
-        f"📧 Email/domain: `{text}`\n\n"
+        f"🆔 Domain: `{text}`\n\n"
         "⏳ Vui lòng chờ admin duyệt. Tại hạ sẽ báo lại khi có kết quả.",
         parse_mode="Markdown",
     )
@@ -115,8 +115,8 @@ async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         admin_text = (
             "🆕 *Yêu cầu đăng ký mới*\n\n"
             f"👤 *{user.full_name or 'Không rõ tên'}* {uname}\n"
-            f"🆔 `{user.id}`\n"
-            f"📧 `{text}`"
+            f"🆔 Telegram ID: `{user.id}`\n"
+            f"🏷️ Domain: `{text}`"
         )
         await context.bot.send_message(
             chat_id=settings.admin_user_id,
