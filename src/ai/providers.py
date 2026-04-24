@@ -19,7 +19,14 @@ from src.ai.prompts import SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 _gemini_client = genai.Client(api_key=settings.gemini_api_key)
-_groq_client = AsyncGroq(api_key=settings.groq_api_key)
+_groq_client: AsyncGroq | None = None
+
+
+def get_groq_client() -> AsyncGroq:
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = AsyncGroq(api_key=settings.groq_api_key)
+    return _groq_client
 
 
 def _to_gemini_tools(tools: list[dict]) -> list[gtypes.Tool]:
@@ -149,7 +156,7 @@ async def call_groq(
     groq_messages = _messages_to_groq_format(messages)
     groq_tools = _to_groq_tools(tools) if tools else None
 
-    response = await _groq_client.chat.completions.create(
+    response = await get_groq_client().chat.completions.create(
         model=model,
         messages=groq_messages,
         tools=groq_tools,
