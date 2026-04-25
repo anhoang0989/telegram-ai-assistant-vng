@@ -82,12 +82,15 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         history_records = await conv_repo.get_recent(session, user_id)
         history = [{"role": r.role, "content": r.content} for r in history_records]
 
+        preferred = await appr_repo.get_preferred_model(session, user_id)
+
         await conv_repo.save(session, user_id, "user", text)
 
         try:
             response_text, model_used = await chat(
                 session, user_id, history, text,
                 gemini_key=gemini_key, groq_key=groq_key, claude_key=claude_key,
+                preferred_model=preferred,
             )
         except Exception as e:
             logger.error(f"chat() error: {e}", exc_info=True)

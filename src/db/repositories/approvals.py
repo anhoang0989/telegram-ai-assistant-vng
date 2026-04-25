@@ -46,6 +46,20 @@ async def set_status(session: AsyncSession, user_id: int, status: str) -> UserAp
     return row
 
 
+async def get_preferred_model(session: AsyncSession, user_id: int) -> str:
+    """Trả về preferred_model. Default 'auto' nếu chưa có row."""
+    row = await get(session, user_id)
+    return (row.preferred_model if row and row.preferred_model else "auto")
+
+
+async def set_preferred_model(session: AsyncSession, user_id: int, model: str) -> None:
+    row = await get(session, user_id)
+    if row is None:
+        return
+    row.preferred_model = model
+    await session.commit()
+
+
 async def is_approved(session: AsyncSession, user_id: int) -> bool:
     row = await get(session, user_id)
     return row is not None and row.status == "approved"

@@ -205,6 +205,31 @@ def confirm_delete_topic_keyboard(topic_hash: str) -> InlineKeyboardMarkup:
     ])
 
 
+def model_picker_keyboard(current: str) -> InlineKeyboardMarkup:
+    """Picker cho /model. current = 'auto' hoặc model_id; đánh dấu • bên cạnh."""
+    from src.config import settings as _s
+
+    def _mark(opt: str, label: str) -> str:
+        return f"• {label}" if opt == current else label
+
+    rows = [
+        [InlineKeyboardButton(_mark("auto", "🤖 Auto (smart routing)"), callback_data="mdl:auto")],
+        [InlineKeyboardButton("─── Gemini (free) ───", callback_data="noop")],
+        [InlineKeyboardButton(_mark(_s.llm_tier1, "⚡ Flash Lite 3.1 (workhorse)"), callback_data=f"mdl:{_s.llm_tier1}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier2, "🌀 Flash Lite 2.5"), callback_data=f"mdl:{_s.llm_tier2}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier3, "🎯 Flash 3 Preview (reasoning)"), callback_data=f"mdl:{_s.llm_tier3}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier4, "💫 Flash 2.5"), callback_data=f"mdl:{_s.llm_tier4}")],
+        [InlineKeyboardButton("─── Groq (free) ───", callback_data="noop")],
+        [InlineKeyboardButton(_mark(_s.llm_tier5, "🦙 Llama 3.3 70B"), callback_data=f"mdl:{_s.llm_tier5}")],
+        [InlineKeyboardButton("─── Paid (cần credit) ───", callback_data="noop")],
+        [InlineKeyboardButton(_mark(_s.llm_tier6, "💎 Gemini Pro 3.1"), callback_data=f"mdl:{_s.llm_tier6}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier7, "💎 Gemini Pro 2.5"), callback_data=f"mdl:{_s.llm_tier7}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier8, "🎭 Claude Haiku 4.5"), callback_data=f"mdl:{_s.llm_tier8}")],
+        [InlineKeyboardButton(_mark(_s.llm_tier9, "🎩 Claude Sonnet 4.6"), callback_data=f"mdl:{_s.llm_tier9}")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
 def snooze_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
     """Snooze reminder N phút (10 / 30 / 60)."""
     return InlineKeyboardMarkup([

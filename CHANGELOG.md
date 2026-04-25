@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-04-25
+### Added — Model selector (`/model`)
+- **Lệnh `/model`** — keyboard cho user chọn model AI:
+  - 🤖 *Auto* (mặc định) — smart 9-tier fallback như cũ
+  - Pin model cụ thể (4 Gemini free + 1 Groq + 2 Gemini Pro paid + 2 Claude paid)
+  - Marker `•` cạnh option đang chọn
+- **Cột `preferred_model`** trong `user_approvals` (default `'auto'`,
+  String(80)). Migration `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+- **Repo helpers** `get_preferred_model` / `set_preferred_model` trong
+  `approvals.py`.
+- **Logic pin trong `llm_router`** — nếu `preferred_model != 'auto'`:
+  - Gọi đúng model đó, KHÔNG fallback sang tier khác (kể cả cùng provider)
+  - Hết quota / thiếu key → trả message yêu cầu user đổi model qua `/model`
+  - Pinned model_id phải nằm trong whitelist `tier1..tier9` để chống abuse
+- Bot menu thêm entry "Chọn model AI", help text mention `/model`.
+
+### Notes
+- Pin = pin cứng. User chọn để test chất lượng từng model phải tự switch
+  về Auto khi muốn fallback. Đây là chủ ý design (đại hiệp đã chốt).
+- Callback `noop` (separator buttons trong picker) được handle silent.
+
 ## [0.8.0] - 2026-04-25
 ### Added — Claude (Anthropic) provider + 3-key BYOK
 - **Claude provider** trong `src/ai/providers.py` (`call_claude`) dùng

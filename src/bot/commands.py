@@ -27,6 +27,7 @@ from src.bot.keyboards import (
     persistent_menu,
     schedules_list_keyboard,
     notes_root_keyboard,
+    model_picker_keyboard,
     PAGE_SIZE,
 )
 
@@ -123,10 +124,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/schedules` — xem lịch sắp tới (có nút xoá)\n"
         "• `/notes` — xem note đã lưu (theo topic / theo ngày)\n"
         "• `/status` — xem quota free tier còn lại\n\n"
-        "🔑 *QUẢN LÝ API KEY*\n"
+        "🔑 *QUẢN LÝ API KEY & MODEL*\n"
         "• `/setkey` — nhập / đổi key Gemini / Groq / Claude\n"
         "• `/mykey` — xem trạng thái keys (đã có hay chưa)\n"
         "• `/removekey` — xoá toàn bộ keys\n"
+        "• `/model` — chọn model AI (Auto = smart fallback, hoặc pin model cụ thể)\n"
         "• `/cancel` — huỷ flow đang chờ nhập input\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "📱 *MENU GÓC DƯỚI* (bấm thay vì gõ lệnh)\n"
@@ -187,6 +189,23 @@ async def mykey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"• Claude (optional, paid): {_mask(claude)}\n\n"
         "Thiếu key nào? Gõ /setkey để nhập.",
         parse_mode="Markdown",
+    )
+
+
+async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Cho user pin model cụ thể, hoặc về 'auto' (smart 7-tier fallback)."""
+    user_id = update.effective_user.id
+    async with AsyncSessionFactory() as session:
+        current = await appr_repo.get_preferred_model(session, user_id)
+    label = "🤖 Auto" if current == "auto" else f"📌 `{current}`"
+    await update.message.reply_text(
+        "🧠 *Chọn model AI:*\n\n"
+        f"Hiện đang dùng: {label}\n\n"
+        "• *Auto* — tại hạ tự chọn tier rẻ nhất phù hợp + fallback khi hết quota\n"
+        "• *Pin model cụ thể* — luôn dùng model đó, KHÔNG fallback (báo lỗi nếu hết quota)\n"
+        "• Paid models cần credit trên console tương ứng",
+        parse_mode="Markdown",
+        reply_markup=model_picker_keyboard(current),
     )
 
 

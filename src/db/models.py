@@ -55,6 +55,8 @@ class UserApproval(Base):
     full_name: Mapped[str | None] = mapped_column(String(255))
     email_or_domain: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | approved | rejected
+    # 'auto' = smart 7-tier fallback; hoặc model_id cụ thể (vd: 'gemini-3.1-flash-lite-preview')
+    preferred_model: Mapped[str] = mapped_column(String(80), default="auto", server_default="auto")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -35,6 +35,7 @@ from src.bot.keyboards import (
     members_list_keyboard,
     member_detail_keyboard,
     confirm_delete_member_keyboard,
+    model_picker_keyboard,
     PAGE_SIZE,
 )
 
@@ -117,6 +118,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _delete_member(update, context, int(parts[1]))
         elif head == "sn":
             await _snooze_reminder(update, context, int(parts[1]), int(parts[2]))
+        elif head == "mdl":
+            await _set_preferred_model(update, context, parts[1] if len(parts) > 1 else "auto")
+        elif head == "noop":
+            pass  # decorative separator buttons in model picker
         else:
             logger.warning(f"Unknown callback data: {data}")
     except Exception as e:
@@ -604,4 +609,31 @@ async def _delete_member(update: Update, context: ContextTypes.DEFAULT_TYPE, tar
     await _safe_edit(
         update.callback_query,
         f"🗑️ Đã xoá user `{target_id}`.\n{summary}",
+    )
+
+
+# ============ MODEL SELECTOR ============
+
+# Whitelist các model_id được phép pin — match với llm_tier1..tier9 + 'auto'
+def _allowed_models() -> set[str]:
+    return {
+        "auto",
+        settings.llm_tier1, settings.llm_tier2, settings.llm_tier3,
+        settings.llm_tier4, settings.llm_tier5, settings.llm_tier6,
+        settings.llm_tier7, settings.llm_tier8, settings.llm_tier9,
+    }
+
+
+async def _set_preferred_model(update: Update, context: ContextTypes.DEFAULT_TYPE, model: str) -> None:
+    user_id = update.effective_user.id
+    if model not in _allowed_models():
+        await update.callback_query.edit_message_text(f"⚠️ Model không hợp lệ: `{model}`")
+        return
+    async with AsyncSessionFactory() as session:
+        await appr_repo.set_preferred_model(session, user_id, model)
+    label = "🤖 Auto (smart routing)" if model == "auto" else f"📌 `{model}` (pinned)"
+    await _safe_edit(
+        update.callback_query,
+        f"✅ Đã đổi model:\n\n{label}\n\nGõ /model để đổi tiếp, hoặc cứ chat bình thường.",
+        reply_markup=model_picker_keyboard(model),
     )

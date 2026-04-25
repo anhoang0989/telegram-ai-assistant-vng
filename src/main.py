@@ -15,6 +15,7 @@ from src.bot.commands import (
     notes_command,
     listmodels_command,
     members_command,
+    model_command,
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
@@ -51,6 +52,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("notes", wrap(notes_command)))
     app.add_handler(CommandHandler("listmodels", wrap(listmodels_command)))
     app.add_handler(CommandHandler("members", wrap(members_command)))
+    app.add_handler(CommandHandler("model", wrap(model_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
@@ -72,6 +74,11 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS claude_key_encrypted TEXT"
         ))
+        # v0.8.1: preferred_model selector
+        await conn.execute(text(
+            "ALTER TABLE user_approvals "
+            "ADD COLUMN IF NOT EXISTS preferred_model VARCHAR(80) DEFAULT 'auto'"
+        ))
     logger.info("DB tables ready.")
 
 
@@ -83,6 +90,7 @@ async def set_bot_menu(app: Application) -> None:
         BotCommand("setkey", "Nhập API key (Gemini/Groq/Claude)"),
         BotCommand("mykey", "Xem trạng thái API keys"),
         BotCommand("removekey", "Xoá API keys"),
+        BotCommand("model", "Chọn model AI (Auto / pin cụ thể)"),
         BotCommand("status", "Xem quota còn lại"),
         BotCommand("help", "Hướng dẫn"),
         BotCommand("cancel", "Huỷ flow đang chờ input"),

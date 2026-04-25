@@ -96,6 +96,66 @@ async def _call_with_fallback(
     ), None, "none"
 
 
+def _find_tier_index(model_id: str) -> int | None:
+    for i, t in enumerate(TIERS):
+        if t["model"] == model_id:
+            return i
+    return None
+
+
+async def _call_pinned(
+    user_id: int,
+    messages: list[dict],
+    model_id: str,
+    keys: dict[str, str | None],
+) -> tuple[str, list[dict] | None, str]:
+    """User đã pin 1 model cụ thể qua /model — KHÔNG fallback sang tier khác.
+    Quota hết hoặc thiếu key → báo lỗi rõ ràng để user tự xử lý.
+    """
+    idx = _find_tier_index(model_id)
+    if idx is None:
+        return (
+            f"⚠️ Model pinned `{model_id}` không nằm trong list. Gõ /model để chọn lại.",
+            None, "none",
+        )
+    tier = TIERS[idx]
+    provider = tier["provider"]
+
+    if not keys.get(provider):
+        return (
+            f"⚠️ Đại hiệp đã pin model `{model_id}` (provider {provider}) "
+            f"nhưng chưa nhập {provider} key. Gõ /setkey hoặc /model để đổi.",
+            None, "none",
+        )
+
+    if not quota_tracker.available(user_id, model_id):
+        return (
+            f"⚠️ Model pinned `{model_id}` đã hết quota local cho hôm nay.\n"
+            "Gõ /model để chuyển sang Auto (có fallback) hoặc đổi model khác.",
+            None, "none",
+        )
+
+    try:
+        text, tool_calls = await _call_tier(tier, messages, keys)
+        quota_tracker.record(user_id, model_id)
+        return text, tool_calls, model_id
+    except Exception as e:
+        err = str(e)
+        if "RESOURCE_EXHAUSTED" in err or "429" in err or "quota" in err.lower():
+            quota_tracker.mark_exhausted(user_id, model_id)
+            return (
+                f"⚠️ Model pinned `{model_id}` API trả 429 (hết quota).\n"
+                "Gõ /model để chuyển sang Auto hoặc đổi model.",
+                None, "none",
+            )
+        logger.warning(f"[{user_id}] Pinned model {model_id} failed: {e}")
+        return (
+            f"⚠️ Model pinned `{model_id}` lỗi: `{e}`.\n"
+            "Gõ /model để đổi sang Auto hoặc model khác.",
+            None, "none",
+        )
+
+
 async def chat(
     session: AsyncSession,
     user_id: int,
@@ -104,12 +164,22 @@ async def chat(
     gemini_key: str,
     groq_key: str | None = None,
     claude_key: str | None = None,
+    preferred_model: str = "auto",
 ) -> tuple[str, str]:
-    """Main entry point. Runs agentic loop with tool use. Returns (final_text, model_used)."""
+    """Main entry point. Runs agentic loop with tool use. Returns (final_text, model_used).
+
+    preferred_model:
+      - 'auto'    → smart 7+2 tier fallback (default)
+      - <model_id> → pinned, KHÔNG fallback sang tier khác
+    """
     user_message = user_message[:MAX_INPUT_CHARS]
     complexity = classify(user_message)
     start_tier = COMPLEXITY_START[complexity]
-    logger.info(f"[{user_id}] complexity={complexity} start_tier={start_tier} msg_len={len(user_message)}")
+    pinned = preferred_model and preferred_model != "auto"
+    logger.info(
+        f"[{user_id}] complexity={complexity} start_tier={start_tier} "
+        f"msg_len={len(user_message)} pinned={preferred_model if pinned else 'no'}"
+    )
 
     keys = {"gemini": gemini_key, "groq": groq_key, "claude": claude_key}
 
@@ -120,9 +190,14 @@ async def chat(
 
     last_model = "none"
     for step in range(MAX_AGENTIC_STEPS):
-        text, tool_calls, model = await _call_with_fallback(
-            user_id, messages, start_tier, keys,
-        )
+        if pinned:
+            text, tool_calls, model = await _call_pinned(
+                user_id, messages, preferred_model, keys,
+            )
+        else:
+            text, tool_calls, model = await _call_with_fallback(
+                user_id, messages, start_tier, keys,
+            )
         last_model = model
 
         if not tool_calls:
