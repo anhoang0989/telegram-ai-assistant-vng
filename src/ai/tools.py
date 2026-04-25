@@ -113,6 +113,34 @@ TOOLS = [
         },
     },
     {
+        "name": "create_offset_reminder",
+        "description": (
+            "Tạo reminder OFFSET trước/sau một lịch đã có. "
+            "Dùng khi user nói 'nhắc tao 30 phút trước cuộc họp X', '15p trước lịch Y'. "
+            "Workflow: trước tiên gọi list_schedules để tìm reference_schedule_id, "
+            "sau đó gọi tool này với offset (mặc định trước = âm). "
+            "Tool tự tính scheduled_at = reference.scheduled_at - offset_minutes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reference_schedule_id": {
+                    "type": "integer",
+                    "description": "ID của lịch gốc (lấy từ list_schedules)",
+                },
+                "minutes_before": {
+                    "type": "integer",
+                    "description": "Số phút TRƯỚC reference (vd: 30 = nhắc trước 30 phút). Dương = trước, âm = sau.",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Mô tả ngắn (vd: 'Chuẩn bị slide họp QC'). Optional.",
+                },
+            },
+            "required": ["reference_schedule_id", "minutes_before"],
+        },
+    },
+    {
         "name": "delete_schedule",
         "description": "Xoá lịch đã đặt. Dùng khi user nói 'xoá lịch...', 'huỷ reminder...'.",
         "input_schema": {
@@ -124,13 +152,46 @@ TOOLS = [
         },
     },
 
+    # ========== TASKS (action items) ==========
+    {
+        "name": "list_tasks",
+        "description": (
+            "Liệt kê task / action items chưa làm xong. "
+            "Dùng khi user hỏi 'tasks hôm nay', 'có task gì pending?', 'việc nào quá hạn?'. "
+            "Filter: pending (mặc định), overdue, today, done, all."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "type": "string",
+                    "enum": ["pending", "overdue", "today", "done", "all"],
+                    "description": "Loại task muốn xem (mặc định pending)",
+                },
+            },
+        },
+    },
+    {
+        "name": "mark_task_done",
+        "description": "Đánh dấu task đã hoàn thành. Dùng khi user nói 'xong task X', 'done rồi cái Y', 'hoàn thành task #5'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "ID của task"},
+            },
+            "required": ["task_id"],
+        },
+    },
+
     # ========== MEETINGS ==========
     {
         "name": "save_meeting_summary",
         "description": (
-            "Lưu meeting minutes sau khi mày đã tóm tắt. "
+            "Lưu meeting minutes sau khi đã tóm tắt. "
             "Dùng sau khi user cung cấp nội dung meeting và yêu cầu tổng hợp. "
-            "Mày phải tự tóm tắt → action items → recommendations → counterarguments trước, rồi gọi tool này."
+            "Tự tóm tắt → action items → recommendations → counterarguments trước, rồi gọi tool này. "
+            "LƯU Ý: mỗi action_item có 'deadline' (ISO 8601) sẽ TỰ ĐỘNG được tạo thành Task riêng "
+            "trong bảng tasks (có thể list bằng list_tasks). Hãy parse deadline rõ ràng nếu có."
         ),
         "input_schema": {
             "type": "object",

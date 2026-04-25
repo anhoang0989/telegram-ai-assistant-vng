@@ -1,10 +1,16 @@
 import logging
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import select
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.triggers.cron import CronTrigger
 from src.config import settings
 from src.db.session import AsyncSessionFactory
 from src.db.repositories import schedules as repo
-from src.services.schedule_service import format_reminder
+from src.db.repositories import tasks as tasks_repo
+from src.db.models import UserApproval, Schedule
+from src.services.schedule_service import format_reminder, TZ
+from src.bot.keyboards import snooze_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +36,15 @@ def init_scheduler(bot) -> AsyncIOScheduler:
         id="reminder_checker",
         replace_existing=True,
     )
+    # Daily digest 8:00 sáng giờ Việt Nam
+    _scheduler.add_job(
+        daily_digest,
+        CronTrigger(hour=8, minute=0, timezone=settings.scheduler_timezone),
+        id="daily_digest",
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("Scheduler started.")
+    logger.info("Scheduler started (reminders + daily digest 8:00).")
     return _scheduler
 
 
@@ -43,8 +56,91 @@ async def check_and_fire_reminders() -> None:
         for schedule in pending:
             try:
                 text = await format_reminder(schedule)
-                await _bot.send_message(chat_id=schedule.user_id, text=text, parse_mode="Markdown")
+                kb = snooze_keyboard(schedule.id)
+                try:
+                    await _bot.send_message(
+                        chat_id=schedule.user_id,
+                        text=text,
+                        parse_mode="Markdown",
+                        reply_markup=kb,
+                    )
+                except Exception:
+                    # Markdown fallback
+                    await _bot.send_message(
+                        chat_id=schedule.user_id,
+                        text=text,
+                        reply_markup=kb,
+                    )
                 await repo.mark_notified(session, schedule.id)
                 logger.info(f"Reminder sent to {schedule.user_id}: {schedule.title}")
             except Exception as e:
                 logger.error(f"Failed to send reminder {schedule.id}: {e}")
+
+
+async def daily_digest() -> None:
+    """Sáng 8h: gửi tóm tắt lịch + task hôm nay cho mọi approved user."""
+    if _bot is None:
+        return
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(UserApproval).where(UserApproval.status == "approved")
+        )
+        users = list(result.scalars().all())
+
+        now = datetime.now(timezone.utc)
+        end_today = now.replace(hour=23, minute=59, second=59)
+
+        for u in users:
+            try:
+                # Lịch hôm nay
+                sched_result = await session.execute(
+                    select(Schedule)
+                    .where(
+                        Schedule.user_id == u.user_id,
+                        Schedule.scheduled_at >= now,
+                        Schedule.scheduled_at <= end_today,
+                    )
+                    .order_by(Schedule.scheduled_at)
+                )
+                today_scheds = list(sched_result.scalars().all())
+
+                # Task hôm nay + overdue
+                today_tasks = await tasks_repo.list_filtered(session, u.user_id, "today")
+                overdue_tasks = await tasks_repo.list_filtered(session, u.user_id, "overdue")
+
+                if not today_scheds and not today_tasks and not overdue_tasks:
+                    continue  # Skip — không có gì để báo
+
+                lines = [f"🌅 *Chào buổi sáng đại hiệp* — {now.astimezone(TZ).strftime('%d/%m/%Y')}\n"]
+
+                if today_scheds:
+                    lines.append(f"📅 *Lịch hôm nay* ({len(today_scheds)}):")
+                    for s in today_scheds:
+                        local = s.scheduled_at.astimezone(TZ).strftime("%H:%M")
+                        lines.append(f"  • {local} — {s.title}")
+                    lines.append("")
+
+                if today_tasks:
+                    lines.append(f"📋 *Task có deadline hôm nay* ({len(today_tasks)}):")
+                    for t in today_tasks:
+                        local = t.deadline.astimezone(TZ).strftime("%H:%M") if t.deadline else "—"
+                        lines.append(f"  • [{local}] #{t.id} {t.title}")
+                    lines.append("")
+
+                if overdue_tasks:
+                    lines.append(f"🔥 *Task quá hạn* ({len(overdue_tasks)}):")
+                    for t in overdue_tasks[:10]:
+                        d = t.deadline.astimezone(TZ).strftime("%d/%m %H:%M") if t.deadline else "—"
+                        lines.append(f"  • [{d}] #{t.id} {t.title}")
+                    lines.append("")
+
+                lines.append("_Gõ_ `/tasks` _hoặc chat 'tao có task gì' để xem chi tiết._")
+
+                text = "\n".join(lines)
+                try:
+                    await _bot.send_message(chat_id=u.user_id, text=text, parse_mode="Markdown")
+                except Exception:
+                    await _bot.send_message(chat_id=u.user_id, text=text)
+                logger.info(f"Daily digest sent to {u.user_id}")
+            except Exception as e:
+                logger.error(f"Daily digest failed for {u.user_id}: {e}")
