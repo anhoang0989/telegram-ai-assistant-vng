@@ -52,7 +52,7 @@ def persistent_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
     """Menu cố định ở góc dưới — luôn hiện sau khi user approved.
     Admin có thêm nút 👑 Members."""
     rows = [
-        [KeyboardButton("📅 Lịch"), KeyboardButton("📝 Note")],
+        [KeyboardButton("📅 Lịch"), KeyboardButton("📝 Note"), KeyboardButton("📚 Knowledge")],
         [KeyboardButton("🔑 Key"), KeyboardButton("📊 Status")],
     ]
     if is_admin:
@@ -202,6 +202,132 @@ def confirm_delete_topic_keyboard(topic_hash: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton("✅ Xoá luôn", callback_data=f"dtc:{topic_hash}"),
             InlineKeyboardButton("❌ Không", callback_data=f"vt:{topic_hash}"),
         ]
+    ])
+
+
+# ============ KNOWLEDGE ============
+# Callback data:
+#   ck:<draft_id>                       confirm knowledge draft
+#   xk:<draft_id>                       cancel knowledge draft
+#   kpe:<draft_id>                      edit product (text input)
+#   kc                                  knowledge root = products list
+#   kpr:<prod>                          view product → categories list
+#                                       prod ∈ {'_a_'=all, '_g_'=general, hash10}
+#   klp:<prod>:<cat>:<page>             list entries (cat ∈ {'_a_', enum})
+#   kve:<id>                            view entry detail
+#   kdl:<id>                            delete entry (confirm step)
+#   kdc:<id>                            delete entry confirmed
+
+CATEGORY_LABELS = {
+    "game_data":     "📊 Game data",
+    "design":        "🎨 Design",
+    "user_behavior": "👥 User behavior",
+    "market":        "🌐 Market",
+    "meeting_log":   "📋 Meeting log",
+    "other":         "📦 Other",
+}
+
+PROD_ALL = "_a_"      # sentinel: tất cả product
+PROD_GEN = "_g_"      # sentinel: product IS NULL (general)
+CAT_ALL = "_a_"       # sentinel: tất cả category
+
+
+def _product_label(prod: str | None) -> str:
+    if prod is None:
+        return "🌐 General"
+    return f"🎮 {prod}"
+
+
+def knowledge_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Lưu knowledge", callback_data=f"ck:{draft_id}"),
+            InlineKeyboardButton("❌ Hủy", callback_data=f"xk:{draft_id}"),
+        ],
+        [
+            InlineKeyboardButton("✏️ Đổi product", callback_data=f"kpe:{draft_id}"),
+        ],
+    ])
+
+
+def knowledge_root_keyboard(products: list[tuple[str | None, int]]) -> InlineKeyboardMarkup:
+    """Root /knowledge: list product với count. None = General."""
+    from src.bot import drafts as _drafts
+    rows = []
+    total = sum(c for _, c in products)
+    if total > 0:
+        rows.append([InlineKeyboardButton(f"📚 Tất cả product ({total})", callback_data=f"kpr:{PROD_ALL}")])
+    for prod, count in products:
+        if prod is None:
+            rows.append([InlineKeyboardButton(f"🌐 General ({count})", callback_data=f"kpr:{PROD_GEN}")])
+        else:
+            h = _drafts.hash_product(prod)
+            rows.append([InlineKeyboardButton(f"🎮 {prod} ({count})", callback_data=f"kpr:{h}")])
+    return InlineKeyboardMarkup(rows) if rows else InlineKeyboardMarkup([])
+
+
+def knowledge_categories_for_product_keyboard(
+    prod_token: str,
+    categories: list[tuple[str, int]],
+) -> InlineKeyboardMarkup:
+    """Sau khi click product → list categories trong scope đó."""
+    rows = []
+    total = sum(c for _, c in categories)
+    if total > 0:
+        rows.append([InlineKeyboardButton(
+            f"📚 Tất cả category ({total})",
+            callback_data=f"klp:{prod_token}:{CAT_ALL}:0",
+        )])
+    for cat, count in categories:
+        label = CATEGORY_LABELS.get(cat, cat)
+        rows.append([InlineKeyboardButton(
+            f"{label} ({count})",
+            callback_data=f"klp:{prod_token}:{cat}:0",
+        )])
+    rows.append([InlineKeyboardButton("⬅️ Quay lại products", callback_data="kc")])
+    return InlineKeyboardMarkup(rows)
+
+
+def knowledge_entries_keyboard(
+    entries: list,
+    prod_token: str,
+    cat: str,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    rows = []
+    start = page * PAGE_SIZE
+    page_items = entries[start:start + PAGE_SIZE]
+    for e in page_items:
+        cat_emoji = CATEGORY_LABELS.get(e.category, e.category).split()[0]
+        prod_part = f"[{e.product}] " if e.product else ""
+        label = f"{cat_emoji} {prod_part}{e.title[:40]}"
+        rows.append([InlineKeyboardButton(label[:60], callback_data=f"kve:{e.id}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️ Trước", callback_data=f"klp:{prod_token}:{cat}:{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Sau ➡️", callback_data=f"klp:{prod_token}:{cat}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton("⬅️ Quay lại product", callback_data=f"kpr:{prod_token}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def knowledge_entry_detail_keyboard(entry_id: int, prod_token: str, cat: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🗑️ Xoá entry", callback_data=f"kdl:{entry_id}")],
+        [InlineKeyboardButton("⬅️ Quay lại list", callback_data=f"klp:{prod_token}:{cat}:0")],
+    ])
+
+
+def knowledge_delete_confirm_keyboard(entry_id: int, prod_token: str, cat: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Xoá luôn", callback_data=f"kdc:{entry_id}"),
+            InlineKeyboardButton("❌ Không", callback_data=f"kve:{entry_id}"),
+        ],
+        [InlineKeyboardButton("⬅️ Quay lại list", callback_data=f"klp:{prod_token}:{cat}:0")],
     ])
 
 

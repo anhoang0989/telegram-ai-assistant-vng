@@ -10,9 +10,13 @@ import uuid
 # user_id → draft dict
 _PENDING_NOTES: dict[int, dict] = {}
 _PENDING_SCHEDULES: dict[int, dict] = {}
+_PENDING_KNOWLEDGE: dict[int, dict] = {}
 
 # topic_hash → topic_name (để encode topic vào callback_data 64-byte limit)
 _TOPIC_HASH: dict[str, str] = {}
+
+# product_hash → product_name (cho knowledge nav callback)
+_PRODUCT_HASH: dict[str, str] = {}
 
 
 def _short_id() -> str:
@@ -68,6 +72,42 @@ def pop_schedule_draft(user_id: int) -> dict | None:
     return _PENDING_SCHEDULES.pop(user_id, None)
 
 
+def put_knowledge_draft(
+    user_id: int,
+    category: str,
+    title: str,
+    content: str,
+    tags: list[str] | None,
+    product: str | None = None,
+) -> str:
+    draft_id = _short_id()
+    _PENDING_KNOWLEDGE[user_id] = {
+        "draft_id": draft_id,
+        "product": product,  # final product (may be None = general)
+        "category": category,
+        "title": title,
+        "content": content,
+        "tags": tags,
+        "ts": time.time(),
+    }
+    return draft_id
+
+
+def get_knowledge_draft(user_id: int) -> dict | None:
+    return _PENDING_KNOWLEDGE.get(user_id)
+
+
+def update_knowledge_product(user_id: int, product: str | None) -> dict | None:
+    draft = _PENDING_KNOWLEDGE.get(user_id)
+    if draft is not None:
+        draft["product"] = product
+    return draft
+
+
+def pop_knowledge_draft(user_id: int) -> dict | None:
+    return _PENDING_KNOWLEDGE.pop(user_id, None)
+
+
 def hash_topic(topic: str) -> str:
     """Map topic name → short hash for callback_data (Telegram limit 64 bytes)."""
     h = uuid.uuid5(uuid.NAMESPACE_OID, topic).hex[:10]
@@ -77,3 +117,14 @@ def hash_topic(topic: str) -> str:
 
 def resolve_topic_hash(h: str) -> str | None:
     return _TOPIC_HASH.get(h)
+
+
+def hash_product(product: str) -> str:
+    """Map product name → short hash for callback_data."""
+    h = uuid.uuid5(uuid.NAMESPACE_OID, "prod:" + product).hex[:10]
+    _PRODUCT_HASH[h] = product
+    return h
+
+
+def resolve_product_hash(h: str) -> str | None:
+    return _PRODUCT_HASH.get(h)

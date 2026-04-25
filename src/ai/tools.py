@@ -162,12 +162,20 @@ TOOLS = [
             "CHỈ gọi khi user nói RÕ RÀNG: 'lưu data', 'save knowledge', 'thêm vào kho', 'lưu design', "
             "'ghi nhận insight này', 'add vào knowledge', hoặc paste 1 đoạn dài (>200 chars) về số liệu/design/research kèm yêu cầu lưu. "
             "TUYỆT ĐỐI KHÔNG gọi cho: chat thường, hỏi tin tức, tóm tắt nhanh, idea ngắn (→ dùng save_note). "
-            "VÍ DỤ NÊN GỌI: 'lưu data ARPU game X tháng 4: 45k VNĐ', 'thêm vào kho design hệ thống guild của Y'. "
+            "VÍ DỤ NÊN GỌI: 'lưu data JX1 ARPU tháng 4: 45k VNĐ' (product=JX1), 'thêm vào kho design hệ thống guild JX2' (product=JX2). "
             "VÍ DỤ KHÔNG GỌI: 'ghi lại idea LiveOps Tết' (→ note), 'phân tích retention Z' (→ search_knowledge trước, không save)."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "product": {
+                    "type": "string",
+                    "description": (
+                        "Sản phẩm/game cụ thể mà entry này thuộc về (vd: 'JX1', 'JX2', 'VLTKM'). "
+                        "BẮT BUỘC infer từ context khi user mention game cụ thể. "
+                        "Bỏ trống / null nếu data chung (research ngành, market overview cross-product)."
+                    ),
+                },
                 "category": {
                     "type": "string",
                     "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
@@ -193,14 +201,22 @@ TOOLS = [
         "description": (
             "Tìm trong kho tri thức cá nhân của đại hiệp. "
             "BẮT BUỘC gọi TRƯỚC khi trả lời câu hỏi liên quan đến data/design/behavior/market của riêng đại hiệp "
-            "(vd: 'retention game X của tao thế nào?', 'design guild của Y ra sao?', 'phân tích ARPU Q2'). "
-            "Nếu không có result → nói thẳng 'kho tri thức chưa có thông tin này, đại hiệp nhập data trước'. "
+            "(vd: 'retention JX1 của tao thế nào?', 'design guild JX2 ra sao?'). "
+            "QUAN TRỌNG: nếu user mention game cụ thể (JX1, JX2...) → BẮT BUỘC truyền product để tránh trộn data sản phẩm. "
+            "Nếu không có result → nói thẳng 'kho chưa có data <product>', đề nghị user nhập. "
             "KHÔNG gọi cho câu hỏi tổng quát ngành (→ web_search hoặc trả lời từ knowledge chung)."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Từ khoá tìm kiếm"},
+                "product": {
+                    "type": "string",
+                    "description": (
+                        "Filter theo sản phẩm (vd: 'JX1'). BẮT BUỘC khi user hỏi về game cụ thể. "
+                        "Bỏ qua nếu user hỏi cross-product hoặc data chung."
+                    ),
+                },
                 "category": {
                     "type": "string",
                     "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
@@ -214,12 +230,16 @@ TOOLS = [
     {
         "name": "list_knowledge",
         "description": (
-            "Liệt kê knowledge entries gần đây. Dùng khi user hỏi 'kho tri thức có gì?', "
-            "'list data của tao', 'có design nào trong kho?'."
+            "Liệt kê knowledge entries gần đây. Dùng khi user hỏi 'kho có gì?', "
+            "'list data JX1', 'có design nào trong JX2?'. Truyền product nếu user mention game."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "product": {
+                    "type": "string",
+                    "description": "Optional — filter theo sản phẩm (vd: 'JX1')",
+                },
                 "category": {
                     "type": "string",
                     "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],

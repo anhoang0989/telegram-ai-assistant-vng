@@ -16,6 +16,7 @@ from src.bot.commands import (
     listmodels_command,
     members_command,
     model_command,
+    knowledge_command,
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
@@ -53,6 +54,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("listmodels", wrap(listmodels_command)))
     app.add_handler(CommandHandler("members", wrap(members_command)))
     app.add_handler(CommandHandler("model", wrap(model_command)))
+    app.add_handler(CommandHandler("knowledge", wrap(knowledge_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
@@ -80,6 +82,16 @@ async def init_db() -> None:
             "ALTER TABLE user_approvals "
             "ADD COLUMN IF NOT EXISTS preferred_model VARCHAR(80) DEFAULT 'auto'"
         ))
+        # v0.9.1: knowledge entries thêm cột product (NULL = general)
+        # idempotent với Base.metadata.create_all (table mới ko cần ALTER, nhưng giữ
+        # cho trường hợp v0.9.0 đã deploy table không có product)
+        await conn.execute(text(
+            "ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS product VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_knowledge_entries_product "
+            "ON knowledge_entries(product)"
+        ))
     logger.info("DB tables ready.")
 
 
@@ -88,6 +100,7 @@ async def set_bot_menu(app: Application) -> None:
         BotCommand("start", "Bắt đầu / đăng ký"),
         BotCommand("schedules", "Xem lịch đã đặt"),
         BotCommand("notes", "Xem note đã lưu"),
+        BotCommand("knowledge", "Kho tri thức cá nhân (data/design/...)"),
         BotCommand("setkey", "Nhập API key (Gemini/Groq/Claude)"),
         BotCommand("mykey", "Xem trạng thái API keys"),
         BotCommand("removekey", "Xoá API keys"),

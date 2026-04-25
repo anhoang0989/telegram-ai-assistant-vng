@@ -28,6 +28,8 @@ from src.bot.keyboards import (
     schedule_confirm_keyboard,
     schedules_list_keyboard,
     notes_root_keyboard,
+    knowledge_confirm_keyboard,
+    CATEGORY_LABELS,
     PAGE_SIZE,
 )
 
@@ -37,7 +39,7 @@ MAX_TELEGRAM_MSG = 4000
 DOMAIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,19}$")
 
 # Persistent menu shortcuts → command-like behavior
-MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status", "👑 Members"}
+MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "📚 Knowledge", "🔑 Key", "📊 Status", "👑 Members"}
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -58,6 +60,11 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Flow 3: awaiting new topic name for note draft
     if context.user_data.get("awaiting_note_topic"):
         await _handle_new_topic_input(update, context, text)
+        return
+
+    # Flow 3b: awaiting new product name for knowledge draft
+    if context.user_data.get("awaiting_knowledge_product"):
+        await _handle_new_knowledge_product_input(update, context, text)
         return
 
     # Flow 4: persistent menu shortcuts
@@ -103,12 +110,16 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Check pending drafts → attach keyboard
         note_draft = drafts.get_note_draft(user_id)
         sched_draft = drafts.get_schedule_draft(user_id)
+        know_draft = drafts.get_knowledge_draft(user_id)
 
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
             return
         if sched_draft:
             await _send_schedule_confirm(update, sched_draft, response_text)
+            return
+        if know_draft:
+            await _send_knowledge_confirm(update, know_draft, response_text)
             return
 
     # Send normal LLM response
@@ -138,6 +149,49 @@ async def _send_note_topic_picker(update, session, user_id, draft, llm_text):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
     except Exception:
         await update.message.reply_text(msg, reply_markup=kb)
+
+
+async def _send_knowledge_confirm(update, draft, llm_text):
+    cat_label = CATEGORY_LABELS.get(draft["category"], draft["category"])
+    prod_label = f"🎮 {draft['product']}" if draft.get("product") else "🌐 General"
+    tags_line = (" 🏷️ " + ", ".join(draft["tags"])) if draft.get("tags") else ""
+    body = draft["content"]
+    if len(body) > 800:
+        body = body[:800] + "…(truncated)"
+    preview = (
+        f"📚 Knowledge draft\n"
+        f"{prod_label} | {cat_label}\n"
+        f"📝 {draft['title']}{tags_line}\n\n"
+        f"{body}\n\n"
+        f"Duyệt? (sai product → ✏️ Đổi product)"
+    )
+    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
+    msg = msg[-MAX_TELEGRAM_MSG:]
+    kb = knowledge_confirm_keyboard(draft["draft_id"])
+    try:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
+    except Exception:
+        await update.message.reply_text(msg, reply_markup=kb)
+
+
+async def _handle_new_knowledge_product_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
+) -> None:
+    """User vừa nhập product name mới sau khi bấm ✏️ Đổi product."""
+    from src.db.repositories import knowledge as knowledge_repo
+    user_id = update.effective_user.id
+    draft_id = context.user_data.pop("awaiting_knowledge_product", None)
+    raw = text.strip()
+    if raw.lower() in ("_general_", "none", "general", "_g_"):
+        new_product = None  # explicit general
+    else:
+        new_product = knowledge_repo.normalize_product(raw)
+    draft = drafts.update_knowledge_product(user_id, new_product)
+    if not draft or draft["draft_id"] != draft_id:
+        await update.message.reply_text("⚠️ Draft đã hết hạn.")
+        return
+    # Re-render preview
+    await _send_knowledge_confirm(update, draft, "")
 
 
 async def _send_schedule_confirm(update, draft, llm_text):
@@ -205,6 +259,9 @@ async def _handle_menu_shortcut(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="Markdown",
             reply_markup=notes_root_keyboard(),
         )
+    elif text == "📚 Knowledge":
+        from src.bot.commands import knowledge_command
+        await knowledge_command(update, context)
     elif text == "🔑 Key":
         await update.message.reply_text(
             "🔑 Đại hiệp chọn loại key cần nhập:",

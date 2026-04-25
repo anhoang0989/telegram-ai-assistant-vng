@@ -206,22 +206,28 @@ async def dispatch_tool(
             }
 
         elif tool_name == "save_knowledge":
-            entry = await knowledge_repo.create(
-                session,
+            # Không insert ngay — tạo draft, chat handler sẽ show confirm keyboard
+            category = knowledge_repo.normalize_category(tool_input.get("category"))
+            product = knowledge_repo.normalize_product(tool_input.get("product"))
+            draft_id = drafts.put_knowledge_draft(
                 user_id=user_id,
-                category=tool_input.get("category", "other"),
+                category=category,
                 title=tool_input["title"],
                 content=tool_input["content"],
                 tags=tool_input.get("tags"),
+                product=product,
             )
             return {
                 "ok": True,
-                "id": entry.id,
-                "category": entry.category,
-                "title": entry.title,
+                "draft": True,
+                "draft_id": draft_id,
+                "product": product,
+                "category": category,
+                "title": tool_input["title"],
                 "instruction": (
-                    "Đã lưu vào kho tri thức. Báo cho user biết entry đã được lưu kèm category. "
-                    "KHÔNG gọi thêm save_knowledge nữa cho cùng nội dung."
+                    "Đã chuẩn bị knowledge draft. KHÔNG gọi thêm tool. "
+                    "Báo user biết tại hạ đã chuẩn bị entry kèm product+category, "
+                    "đại hiệp duyệt qua nút bên dưới (có nút đổi product nếu sai)."
                 ),
             }
 
@@ -233,15 +239,19 @@ async def dispatch_tool(
                 session,
                 user_id=user_id,
                 query=query,
+                product=tool_input.get("product"),
                 category=tool_input.get("category"),
                 limit=tool_input.get("limit", 5),
             )
             return {
                 "ok": True,
                 "count": len(entries),
+                "filter_product": tool_input.get("product"),
+                "filter_category": tool_input.get("category"),
                 "results": [
                     {
                         "id": e.id,
+                        "product": e.product,
                         "category": e.category,
                         "title": e.title,
                         "content": e.content[:1500],
@@ -251,27 +261,31 @@ async def dispatch_tool(
                     for e in entries
                 ],
                 "instruction": (
-                    "Đây là kết quả từ kho tri thức cá nhân của user. "
+                    "Đây là kết quả từ kho tri thức cá nhân của user (đã filter product+category nếu có). "
                     "Dùng để phân tích / phản biện / trả lời. "
-                    "Nếu count=0 → nói thẳng kho chưa có data, đề nghị user nhập."
+                    "Nếu count=0 → nói thẳng kho chưa có data, đề nghị user nhập, mention rõ product nếu đã filter."
                 ),
             }
 
         elif tool_name == "list_knowledge":
-            entries = await knowledge_repo.list_by_category(
+            entries = await knowledge_repo.list_filtered(
                 session,
                 user_id=user_id,
+                product=tool_input.get("product"),
                 category=tool_input.get("category"),
                 limit=tool_input.get("limit", 10),
             )
-            categories = await knowledge_repo.list_categories(session, user_id)
+            products = await knowledge_repo.list_products(session, user_id)
             return {
                 "ok": True,
                 "count": len(entries),
-                "categories_overview": [{"category": c, "count": n} for c, n in categories],
+                "products_overview": [
+                    {"product": (p or "_general_"), "count": n} for p, n in products
+                ],
                 "results": [
                     {
                         "id": e.id,
+                        "product": e.product,
                         "category": e.category,
                         "title": e.title,
                         "tags": e.tags or [],

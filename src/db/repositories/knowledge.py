@@ -1,9 +1,17 @@
 """
 Knowledge base CRUD — personal store cho data/design/behavior/research per user.
+Phân vùng theo (product, category):
+  - product: sản phẩm cụ thể (JX1, JX2...) hoặc NULL = General/cross-product
+  - category: game_data | design | user_behavior | market | meeting_log | other
+
 Search dùng ILIKE trên title + content (đủ cho ~vài trăm entries).
-Upgrade lên tsvector / pgvector khi cần.
+Sentinel cho product filter:
+  None        → no filter (tất cả product)
+  '_general_' → WHERE product IS NULL
+  '<name>'    → WHERE product = '<name>' (exact match)
 """
-from sqlalchemy import select, func, or_, delete as sql_delete
+import re
+from sqlalchemy import select, func, or_, and_, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import KnowledgeEntry
 
@@ -16,6 +24,11 @@ VALID_CATEGORIES = {
     "other",
 }
 
+GENERAL_SENTINEL = "_general_"  # product=NULL filter
+ALL_SENTINEL = "_all_"          # no filter
+
+_PRODUCT_RE = re.compile(r"\s+")
+
 
 def normalize_category(cat: str | None) -> str:
     if not cat:
@@ -24,17 +37,30 @@ def normalize_category(cat: str | None) -> str:
     return cat if cat in VALID_CATEGORIES else "other"
 
 
+def normalize_product(product: str | None) -> str | None:
+    """Trim + thay khoảng trắng thành '_'. Giữ case nguyên (JX1 ≠ jx1).
+    Trả None nếu rỗng → general/cross-product.
+    """
+    if product is None:
+        return None
+    p = _PRODUCT_RE.sub("_", product.strip())
+    p = p[:50]
+    return p if p else None
+
+
 async def create(
     session: AsyncSession,
     user_id: int,
     category: str,
     title: str,
     content: str,
+    product: str | None = None,
     tags: list[str] | None = None,
     source: str = "chat",
 ) -> KnowledgeEntry:
     entry = KnowledgeEntry(
         user_id=user_id,
+        product=normalize_product(product),
         category=normalize_category(category),
         title=title[:255],
         content=content,
@@ -47,14 +73,34 @@ async def create(
     return entry
 
 
+def _apply_product_filter(stmt, product: str | None):
+    """Áp dụng product filter dựa trên sentinel.
+    None hoặc '_all_' → không filter.
+    '_general_' → WHERE product IS NULL.
+    Khác → WHERE product = <name>.
+    """
+    if product is None or product == ALL_SENTINEL:
+        return stmt
+    if product == GENERAL_SENTINEL:
+        return stmt.where(KnowledgeEntry.product.is_(None))
+    return stmt.where(KnowledgeEntry.product == product)
+
+
+def _apply_category_filter(stmt, category: str | None):
+    if category is None or category == ALL_SENTINEL:
+        return stmt
+    return stmt.where(KnowledgeEntry.category == normalize_category(category))
+
+
 async def search(
     session: AsyncSession,
     user_id: int,
     query: str,
+    product: str | None = None,
     category: str | None = None,
     limit: int = 5,
 ) -> list[KnowledgeEntry]:
-    """ILIKE trên title + content. Optional filter theo category."""
+    """ILIKE trên title + content. Optional filter theo product + category."""
     pat = f"%{query.strip()}%"
     stmt = select(KnowledgeEntry).where(
         KnowledgeEntry.user_id == user_id,
@@ -63,35 +109,54 @@ async def search(
             KnowledgeEntry.content.ilike(pat),
         ),
     )
-    if category:
-        stmt = stmt.where(KnowledgeEntry.category == normalize_category(category))
+    stmt = _apply_product_filter(stmt, product)
+    stmt = _apply_category_filter(stmt, category)
     stmt = stmt.order_by(KnowledgeEntry.updated_at.desc()).limit(limit)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
-async def list_by_category(
+async def list_filtered(
     session: AsyncSession,
     user_id: int,
+    product: str | None = None,
     category: str | None = None,
-    limit: int = 10,
+    limit: int = 200,
 ) -> list[KnowledgeEntry]:
     stmt = select(KnowledgeEntry).where(KnowledgeEntry.user_id == user_id)
-    if category:
-        stmt = stmt.where(KnowledgeEntry.category == normalize_category(category))
+    stmt = _apply_product_filter(stmt, product)
+    stmt = _apply_category_filter(stmt, category)
     stmt = stmt.order_by(KnowledgeEntry.updated_at.desc()).limit(limit)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
-async def list_categories(session: AsyncSession, user_id: int) -> list[tuple[str, int]]:
-    """Trả về [(category, count), ...] sort by count desc."""
+async def list_products(session: AsyncSession, user_id: int) -> list[tuple[str | None, int]]:
+    """Trả [(product_name_or_None, count), ...] sort by count desc.
+    None = general/cross-product entries.
+    """
     result = await session.execute(
-        select(KnowledgeEntry.category, func.count(KnowledgeEntry.id))
+        select(KnowledgeEntry.product, func.count(KnowledgeEntry.id))
         .where(KnowledgeEntry.user_id == user_id)
-        .group_by(KnowledgeEntry.category)
+        .group_by(KnowledgeEntry.product)
         .order_by(func.count(KnowledgeEntry.id).desc())
     )
+    return [(row[0], row[1]) for row in result.all()]
+
+
+async def list_categories_for_product(
+    session: AsyncSession,
+    user_id: int,
+    product: str | None = None,
+) -> list[tuple[str, int]]:
+    """Trả [(category, count), ...] trong scope product (hoặc all nếu product=None/_all_)."""
+    stmt = (
+        select(KnowledgeEntry.category, func.count(KnowledgeEntry.id))
+        .where(KnowledgeEntry.user_id == user_id)
+    )
+    stmt = _apply_product_filter(stmt, product)
+    stmt = stmt.group_by(KnowledgeEntry.category).order_by(func.count(KnowledgeEntry.id).desc())
+    result = await session.execute(stmt)
     return [(row[0], row[1]) for row in result.all()]
 
 

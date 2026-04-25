@@ -75,12 +75,15 @@ class UserApiKey(Base):
 class KnowledgeEntry(Base):
     """Personal knowledge base per user — data, design, behavior, research...
     AI dùng để phân tích, phản biện, đưa cảnh báo dựa trên data của riêng user.
+    Partition theo (product, category): product = sản phẩm cụ thể (JX1, JX2...)
+    hoặc NULL = General (data ngành/cross-product).
     Categories: game_data | design | user_behavior | market | meeting_log | other
     """
     __tablename__ = "knowledge_entries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    product: Mapped[str | None] = mapped_column(String(50), index=True)  # NULL = general/cross-product
     category: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

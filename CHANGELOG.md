@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-25
+### Added — Knowledge: product partition + confirm flow + `/knowledge` UI
+- **Cột `product VARCHAR(50)` trong `knowledge_entries`** (nullable, indexed)
+  để phân biệt data theo sản phẩm (JX1, JX2, VLTKM...). NULL = General/cross-product.
+  Migration `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`.
+- **3 tools knowledge thêm field `product`**:
+  - `save_knowledge`: optional, BẮT BUỘC infer khi user mention game cụ thể
+  - `search_knowledge`: filter theo product để tránh trộn data
+  - `list_knowledge`: filter theo product
+- **SYSTEM_PROMPT** thêm "Quy tắc product" với ví dụ cụ thể JX1/JX2.
+- **Repo refactor**: `list_filtered(product, category)`, `list_products()`,
+  `list_categories_for_product()`, `normalize_product()` (trim + replace space → `_`,
+  giữ case). Sentinel `_all_`/`_general_` cho filter.
+- **Draft confirm flow**: tool `save_knowledge` tạo draft trong memory thay vì
+  insert. Chat handler render preview với product+category, 3 nút:
+  ✅ Lưu / ❌ Hủy / ✏️ Đổi product. Bấm "Đổi product" → text input flow
+  (`awaiting_knowledge_product`) → re-render preview.
+- **Lệnh `/knowledge`** 3-level navigation:
+  1. Root: list products với count (📚 Tất cả / 🎮 JX1 / 🌐 General...)
+  2. Click product → list categories trong scope
+  3. Click category → entries paginate 5/page
+  4. Click entry → detail + 🗑️ Xoá (confirm 2 bước)
+- **Persistent menu** thêm nút "📚 Knowledge".
+- **Callback prefixes**: `ck`/`xk` (confirm/cancel draft), `kpe` (edit product),
+  `kc` (root), `kpr:<prod>` (view product), `klp:<prod>:<cat>:<page>` (list page),
+  `kve`/`kdl`/`kdc`. Product hash 10 chars (`drafts.hash_product`) để fit 64-byte.
+  Sentinels `_a_`=all, `_g_`=general/NULL. Max len ~31 bytes.
+- **`CATEGORY_LABELS`** dict dùng chung callbacks + chat handler.
+- Help text + bot menu thêm `/knowledge`, ví dụ chat update với product.
+
 ## [0.9.0] - 2026-04-25
 ### Added — Personal Knowledge Base (text, BYO via chat)
 - **Bảng `knowledge_entries`** mới: id, user_id (indexed), category (indexed),
