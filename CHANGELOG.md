@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-25
+### Added — Web search (Gemini grounding) + tighter tool gating
+- **`web_search` tool** — dùng Gemini `GoogleSearch` grounding builtin (không cần API thứ 3).
+  LLM tự gọi khi user hỏi tin tức / kết quả thể thao / số liệu real-time.
+  Trả về text tổng hợp + nguồn (top 5 URL).
+- Default search model: `gemini-2.5-flash`, fallback `gemini-2.5-flash-lite` khi quota hết.
+
+### Fixed
+- **Tool over-trigger**: trước đây bot tạo note draft cho cả câu hỏi tra cứu
+  (vd "kết quả U17 hôm qua?" → tạo note rồi trả "không truy cập được").
+  Siết SYSTEM_PROMPT + tool descriptions:
+  - `save_note` CHỈ khi user nói rõ "ghi lại / lưu lại / note lại"
+  - `create_schedule` CHỈ khi user nói rõ "nhắc / hẹn / đặt lịch"
+  - Câu hỏi tra cứu → bắt buộc `web_search` thay vì bịa hoặc note
+- `_safe_edit()` helper trong callbacks.py — fallback plain-text khi user
+  content có `*`/`_` không cân bằng (Markdown parse error)
+
 ## [0.5.0] - 2026-04-25
 ### Added — Admin members management
 - `/members` — list user đã duyệt (paginate 5/page)

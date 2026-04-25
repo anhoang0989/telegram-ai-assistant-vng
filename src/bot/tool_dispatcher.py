@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 from src.config import settings
 from src.services import note_service, schedule_service
 from src.db.repositories import notes as notes_repo, schedules as sched_repo
+from src.db.repositories import user_keys as keys_repo
 from src.db.models import MeetingMinute
 from src.bot import drafts
+from src.ai.providers import gemini_web_search
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo(settings.scheduler_timezone)
@@ -23,7 +25,26 @@ async def dispatch_tool(
     tool_input: dict,
 ) -> dict:
     try:
-        if tool_name == "save_note":
+        if tool_name == "web_search":
+            query = tool_input.get("query", "").strip()
+            if not query:
+                return {"ok": False, "error": "Empty query"}
+            gemini_key, _ = await keys_repo.get_decrypted_keys(session, user_id)
+            if not gemini_key:
+                return {"ok": False, "error": "Chưa có Gemini key để search"}
+            result = await gemini_web_search(gemini_key, query)
+            return {
+                "ok": True,
+                "query": query,
+                "text": result["text"],
+                "sources": result["sources"],
+                "instruction": (
+                    "Đây là kết quả search real-time. Hãy tổng hợp lại bằng tiếng Việt, "
+                    "ngắn gọn, trích dẫn nguồn nếu có. KHÔNG bịa thêm số liệu ngoài kết quả này."
+                ),
+            }
+
+        elif tool_name == "save_note":
             # Không insert ngay — tạo draft, chat_handler sẽ show keyboard pick-topic + confirm
             draft_id = drafts.put_note_draft(
                 user_id=user_id,

@@ -64,6 +64,53 @@ def _to_groq_tools(tools: list[dict]) -> list[dict]:
     ]
 
 
+# ========== GEMINI WEB SEARCH (grounded) ==========
+
+async def gemini_web_search(api_key: str, query: str) -> dict:
+    """
+    Gọi Gemini với GoogleSearch grounding builtin → trả về text + nguồn.
+    Tách riêng vì grounding tool không mix với function_declarations cùng request.
+    """
+    client = _get_gemini_client(api_key)
+    config = gtypes.GenerateContentConfig(
+        tools=[gtypes.Tool(google_search=gtypes.GoogleSearch())],
+        temperature=0.3,
+    )
+    # Dùng 2.5-flash — model rẻ nhất hỗ trợ grounding ổn định
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=query,
+            config=config,
+        )
+    except Exception as e:
+        # Fallback sang flash-lite nếu 2.5-flash hết quota
+        logger.warning(f"web_search on 2.5-flash failed: {e}, retrying flash-lite")
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=query,
+            config=config,
+        )
+
+    text = ""
+    sources: list[str] = []
+    try:
+        text = response.text or ""
+    except Exception:
+        pass
+    try:
+        gm = response.candidates[0].grounding_metadata
+        if gm and getattr(gm, "grounding_chunks", None):
+            for ch in gm.grounding_chunks:
+                web = getattr(ch, "web", None)
+                if web and getattr(web, "uri", None):
+                    sources.append(f"{web.title or web.uri} — {web.uri}")
+    except Exception:
+        pass
+
+    return {"text": text, "sources": sources[:5]}
+
+
 # ========== GEMINI ==========
 
 def _messages_to_gemini_contents(messages: list[dict]) -> list[gtypes.Content]:

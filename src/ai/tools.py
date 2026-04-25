@@ -4,12 +4,34 @@ AI gọi tool nào là do AI tự quyết, user chỉ chat tự nhiên.
 """
 
 TOOLS = [
+    # ========== WEB SEARCH ==========
+    {
+        "name": "web_search",
+        "description": (
+            "Tìm kiếm thông tin real-time qua Google Search grounding. "
+            "BẮT BUỘC dùng khi user hỏi: tin tức, sự kiện, kết quả thể thao, giá cả, "
+            "số liệu mới, báo cáo ngành, hoặc bất kỳ thông tin nào có thể đã thay đổi sau training. "
+            "KHÔNG bịa khi không chắc — luôn search trước rồi trả lời."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Câu truy vấn tìm kiếm, viết rõ ràng tự nhiên (vd: 'kết quả U17 Việt Nam vs Malaysia 24/04/2026')",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+
     # ========== NOTES ==========
     {
         "name": "save_note",
         "description": (
-            "Lưu ghi chú khi user muốn ghi lại thông tin. "
-            "Dùng khi user nói 'ghi lại', 'note lại', 'lưu lại', hoặc liệt kê thông tin cần nhớ. "
+            "Lưu ghi chú vào DB cá nhân của user. "
+            "CHỈ gọi khi user nói RÕ RÀNG muốn ghi: 'ghi lại', 'note lại', 'lưu lại', 'save cái này'. "
+            "TUYỆT ĐỐI KHÔNG gọi cho câu hỏi tra cứu, chat, hỏi tin tức, hỏi ý kiến. "
             "Phải tự suy luận 1 'topic' phù hợp từ context hội thoại để nhóm note "
             "(vd: 'Họp QC 25/04', 'Idea LiveOps', 'Research Genshin'). "
             "Topic là gợi ý — user vẫn có quyền chọn topic khác qua nút."
@@ -58,7 +80,8 @@ TOOLS = [
     {
         "name": "create_schedule",
         "description": (
-            "Tạo lịch/nhắc nhở. Dùng khi user nói 'nhắc tao...', 'đặt lịch...', 'hẹn...'. "
+            "Tạo lịch/nhắc nhở. CHỈ gọi khi user nói RÕ RÀNG: 'nhắc tao...', 'đặt lịch...', "
+            "'hẹn...', 'reminder...', 'set lịch...'. KHÔNG tự đoán từ chat thông thường. "
             "Parse ngôn ngữ tự nhiên để xác định thời gian (vd: '3h chiều mai', 'thứ 6 tuần sau 9h')."
         ),
         "input_schema": {
