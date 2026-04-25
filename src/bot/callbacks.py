@@ -16,7 +16,6 @@ from src.db.session import AsyncSessionFactory
 from src.db.repositories import approvals as appr_repo
 from src.db.repositories import notes as notes_repo
 from src.db.repositories import schedules as sched_repo
-from src.db.repositories import tasks as tasks_repo
 from src.services import note_service, schedule_service
 from src.bot import drafts
 from src.bot.keyboards import (
@@ -118,8 +117,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _delete_member(update, context, int(parts[1]))
         elif head == "sn":
             await _snooze_reminder(update, context, int(parts[1]), int(parts[2]))
-        elif head == "td":
-            await _task_done(update, context, int(parts[1]))
         else:
             logger.warning(f"Unknown callback data: {data}")
     except Exception as e:
@@ -511,7 +508,6 @@ async def _view_member(update: Update, context: ContextTypes.DEFAULT_TYPE, targe
         f"• Lịch sắp tới: {stats['upcoming_schedules']}\n"
         f"• Note: {stats['note_count']} (trong {stats['topic_count']} topic)\n"
         f"• Meeting: {stats['meeting_count']}\n"
-        f"• Task pending: {stats.get('task_pending', 0)}\n"
         f"• Tin nhắn: {stats['msg_count']}"
     )
     await update.callback_query.edit_message_text(
@@ -582,16 +578,6 @@ async def _snooze_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE, s
         update.callback_query,
         f"⏸ Đã snooze *{minutes} phút*. Tại hạ sẽ nhắc lại sau.",
     )
-
-
-async def _task_done(update: Update, context: ContextTypes.DEFAULT_TYPE, task_id: int) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        ok = await tasks_repo.mark_done(session, user_id, task_id)
-    if ok:
-        await _safe_edit(update.callback_query, f"✅ Task #{task_id} đã đánh dấu hoàn thành.")
-    else:
-        await update.callback_query.edit_message_text("❌ Không tìm thấy task.")
 
 
 # ============ ADMIN: delete member ============

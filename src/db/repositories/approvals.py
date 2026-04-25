@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import select, func, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import (
-    UserApproval, UserApiKey, Note, Schedule, Conversation, MeetingMinute, Task,
+    UserApproval, UserApiKey, Note, Schedule, Conversation, MeetingMinute,
 )
 
 
@@ -82,16 +82,12 @@ async def user_stats(session: AsyncSession, user_id: int) -> dict:
     meeting_count = (await session.execute(
         select(func.count(MeetingMinute.id)).where(MeetingMinute.user_id == user_id)
     )).scalar() or 0
-    task_pending = (await session.execute(
-        select(func.count(Task.id)).where(Task.user_id == user_id, Task.done == False)
-    )).scalar() or 0
     return {
         "upcoming_schedules": upcoming,
         "note_count": note_count,
         "topic_count": topic_count,
         "msg_count": msg_count,
         "meeting_count": meeting_count,
-        "task_pending": task_pending,
     }
 
 
@@ -103,7 +99,6 @@ async def delete_user_data(session: AsyncSession, user_id: int) -> dict:
         (Note, "notes"),
         (Schedule, "schedules"),
         (MeetingMinute, "meetings"),
-        (Task, "tasks"),
     ]:
         r = await session.execute(sql_delete(model).where(model.user_id == user_id))
         counts[label] = r.rowcount or 0

@@ -152,37 +152,6 @@ TOOLS = [
         },
     },
 
-    # ========== TASKS (action items) ==========
-    {
-        "name": "list_tasks",
-        "description": (
-            "Liệt kê task / action items chưa làm xong. "
-            "Dùng khi user hỏi 'tasks hôm nay', 'có task gì pending?', 'việc nào quá hạn?'. "
-            "Filter: pending (mặc định), overdue, today, done, all."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "filter": {
-                    "type": "string",
-                    "enum": ["pending", "overdue", "today", "done", "all"],
-                    "description": "Loại task muốn xem (mặc định pending)",
-                },
-            },
-        },
-    },
-    {
-        "name": "mark_task_done",
-        "description": "Đánh dấu task đã hoàn thành. Dùng khi user nói 'xong task X', 'done rồi cái Y', 'hoàn thành task #5'.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "task_id": {"type": "integer", "description": "ID của task"},
-            },
-            "required": ["task_id"],
-        },
-    },
-
     # ========== MEETINGS ==========
     {
         "name": "save_meeting_summary",
@@ -190,8 +159,7 @@ TOOLS = [
             "Lưu meeting minutes sau khi đã tóm tắt. "
             "Dùng sau khi user cung cấp nội dung meeting và yêu cầu tổng hợp. "
             "Tự tóm tắt → action items → recommendations → counterarguments trước, rồi gọi tool này. "
-            "LƯU Ý: mỗi action_item có 'deadline' (ISO 8601) sẽ TỰ ĐỘNG được tạo thành Task riêng "
-            "trong bảng tasks (có thể list bằng list_tasks). Hãy parse deadline rõ ràng nếu có."
+            "Mỗi action_item nên có owner + deadline (ISO 8601) nếu có thể parse từ context."
         ),
         "input_schema": {
             "type": "object",

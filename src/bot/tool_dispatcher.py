@@ -11,7 +11,6 @@ from datetime import timedelta
 from src.services import note_service, schedule_service
 from src.db.repositories import notes as notes_repo, schedules as sched_repo
 from src.db.repositories import user_keys as keys_repo
-from src.db.repositories import tasks as tasks_repo
 from src.db.models import MeetingMinute, Schedule
 from src.bot import drafts
 from src.ai.providers import gemini_web_search
@@ -181,30 +180,6 @@ async def dispatch_tool(
                 "reference_id": ref_id,
             }
 
-        elif tool_name == "list_tasks":
-            filter_kind = tool_input.get("filter", "pending")
-            tasks = await tasks_repo.list_filtered(session, user_id, filter_kind)
-            return {
-                "ok": True,
-                "filter": filter_kind,
-                "count": len(tasks),
-                "results": [
-                    {
-                        "id": t.id,
-                        "title": t.title,
-                        "owner": t.owner,
-                        "deadline_local": t.deadline.astimezone(TZ).strftime("%d/%m/%Y %H:%M") if t.deadline else None,
-                        "done": t.done,
-                        "from_meeting_id": t.source_meeting_id,
-                    }
-                    for t in tasks
-                ],
-            }
-
-        elif tool_name == "mark_task_done":
-            ok = await tasks_repo.mark_done(session, user_id, tool_input["task_id"])
-            return {"ok": ok, "id": tool_input["task_id"]}
-
         elif tool_name == "save_meeting_summary":
             meeting = MeetingMinute(
                 user_id=user_id,
@@ -222,38 +197,11 @@ async def dispatch_tool(
             session.add(meeting)
             await session.commit()
             await session.refresh(meeting)
-
-            # Auto-create Task rows từ action_items có deadline
-            from datetime import datetime as _dt
-            tasks_created = []
-            for ai in tool_input.get("action_items", []) or []:
-                task_title = ai.get("task")
-                if not task_title:
-                    continue
-                deadline_dt = None
-                if ai.get("deadline"):
-                    try:
-                        deadline_dt = _dt.fromisoformat(ai["deadline"])
-                        if deadline_dt.tzinfo is None:
-                            deadline_dt = deadline_dt.replace(tzinfo=TZ)
-                    except Exception:
-                        deadline_dt = None
-                t = await tasks_repo.create(
-                    session,
-                    user_id=user_id,
-                    title=task_title[:255],
-                    owner=ai.get("owner"),
-                    deadline=deadline_dt,
-                    source_meeting_id=meeting.id,
-                )
-                tasks_created.append({"id": t.id, "title": t.title})
-
             return {
                 "ok": True,
                 "id": meeting.id,
                 "title": meeting.title,
-                "tasks_created": len(tasks_created),
-                "task_ids": [t["id"] for t in tasks_created],
+                "action_items_count": len(tool_input.get("action_items", []) or []),
             }
 
         elif tool_name == "list_meetings":

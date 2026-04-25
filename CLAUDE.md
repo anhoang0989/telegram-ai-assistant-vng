@@ -49,6 +49,7 @@ src/
 │   └── keyboards.py           — TẤT CẢ InlineKeyboard + ReplyKeyboard builders ở đây
 ├── db/
 │   ├── models.py              — Base, UserApproval, UserApiKey, Note, Schedule, MeetingMinute, Conversation
+│   │                            (KHÔNG có Task — user dùng bot task riêng)
 │   ├── session.py             — async engine + AsyncSessionFactory
 │   └── repositories/          — 1 file/model: get/list/create/delete
 ├── services/                  — note_service, schedule_service (business logic, gọi từ tool_dispatcher)

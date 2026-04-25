@@ -13,7 +13,6 @@ from src.bot.commands import (
     pending_command,
     schedules_command,
     notes_command,
-    tasks_command,
     listmodels_command,
     members_command,
 )
@@ -50,7 +49,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("pending", wrap(pending_command)))
     app.add_handler(CommandHandler("schedules", wrap(schedules_command)))
     app.add_handler(CommandHandler("notes", wrap(notes_command)))
-    app.add_handler(CommandHandler("tasks", wrap(tasks_command)))
     app.add_handler(CommandHandler("listmodels", wrap(listmodels_command)))
     app.add_handler(CommandHandler("members", wrap(members_command)))
 
@@ -78,7 +76,6 @@ async def set_bot_menu(app: Application) -> None:
         BotCommand("start", "Bắt đầu / đăng ký"),
         BotCommand("schedules", "Xem lịch đã đặt"),
         BotCommand("notes", "Xem note đã lưu"),
-        BotCommand("tasks", "Xem task / action items pending"),
         BotCommand("setkey", "Nhập API key (Gemini/Groq)"),
         BotCommand("mykey", "Xem trạng thái API keys"),
         BotCommand("removekey", "Xoá API keys"),

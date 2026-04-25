@@ -7,7 +7,6 @@ from apscheduler.triggers.cron import CronTrigger
 from src.config import settings
 from src.db.session import AsyncSessionFactory
 from src.db.repositories import schedules as repo
-from src.db.repositories import tasks as tasks_repo
 from src.db.models import UserApproval, Schedule
 from src.services.schedule_service import format_reminder, TZ
 from src.bot.keyboards import snooze_keyboard
@@ -78,7 +77,7 @@ async def check_and_fire_reminders() -> None:
 
 
 async def daily_digest() -> None:
-    """Sáng 8h: gửi tóm tắt lịch + task hôm nay cho mọi approved user."""
+    """Sáng 8h: gửi tóm tắt lịch hôm nay cho mọi approved user."""
     if _bot is None:
         return
     async with AsyncSessionFactory() as session:
@@ -92,7 +91,6 @@ async def daily_digest() -> None:
 
         for u in users:
             try:
-                # Lịch hôm nay
                 sched_result = await session.execute(
                     select(Schedule)
                     .where(
@@ -104,37 +102,15 @@ async def daily_digest() -> None:
                 )
                 today_scheds = list(sched_result.scalars().all())
 
-                # Task hôm nay + overdue
-                today_tasks = await tasks_repo.list_filtered(session, u.user_id, "today")
-                overdue_tasks = await tasks_repo.list_filtered(session, u.user_id, "overdue")
-
-                if not today_scheds and not today_tasks and not overdue_tasks:
-                    continue  # Skip — không có gì để báo
+                if not today_scheds:
+                    continue  # Skip — không có lịch hôm nay
 
                 lines = [f"🌅 *Chào buổi sáng đại hiệp* — {now.astimezone(TZ).strftime('%d/%m/%Y')}\n"]
-
-                if today_scheds:
-                    lines.append(f"📅 *Lịch hôm nay* ({len(today_scheds)}):")
-                    for s in today_scheds:
-                        local = s.scheduled_at.astimezone(TZ).strftime("%H:%M")
-                        lines.append(f"  • {local} — {s.title}")
-                    lines.append("")
-
-                if today_tasks:
-                    lines.append(f"📋 *Task có deadline hôm nay* ({len(today_tasks)}):")
-                    for t in today_tasks:
-                        local = t.deadline.astimezone(TZ).strftime("%H:%M") if t.deadline else "—"
-                        lines.append(f"  • [{local}] #{t.id} {t.title}")
-                    lines.append("")
-
-                if overdue_tasks:
-                    lines.append(f"🔥 *Task quá hạn* ({len(overdue_tasks)}):")
-                    for t in overdue_tasks[:10]:
-                        d = t.deadline.astimezone(TZ).strftime("%d/%m %H:%M") if t.deadline else "—"
-                        lines.append(f"  • [{d}] #{t.id} {t.title}")
-                    lines.append("")
-
-                lines.append("_Gõ_ `/tasks` _hoặc chat 'tao có task gì' để xem chi tiết._")
+                lines.append(f"📅 *Lịch hôm nay* ({len(today_scheds)}):")
+                for s in today_scheds:
+                    local = s.scheduled_at.astimezone(TZ).strftime("%H:%M")
+                    desc = f" — {s.description}" if s.description else ""
+                    lines.append(f"  • {local} *{s.title}*{desc}")
 
                 text = "\n".join(lines)
                 try:

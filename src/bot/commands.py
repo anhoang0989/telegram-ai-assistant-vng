@@ -21,14 +21,12 @@ from src.db.models import UserApproval
 from src.ai.quota_tracker import quota_tracker
 from src.db.repositories import notes as notes_repo
 from src.db.repositories import schedules as sched_repo
-from src.db.repositories import tasks as tasks_repo
 from src.bot.keyboards import (
     approval_keyboard,
     setkey_keyboard,
     persistent_menu,
     schedules_list_keyboard,
     notes_root_keyboard,
-    task_done_keyboard,
     PAGE_SIZE,
 )
 
@@ -227,42 +225,6 @@ async def schedules_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         parse_mode="Markdown",
         reply_markup=schedules_list_keyboard(items, 0, total_pages),
     )
-
-
-async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """List pending tasks. Mỗi task có button 'Done'."""
-    from zoneinfo import ZoneInfo
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        pending = await tasks_repo.list_filtered(session, user_id, "pending", limit=20)
-        overdue = await tasks_repo.list_filtered(session, user_id, "overdue", limit=10)
-    if not pending and not overdue:
-        await update.message.reply_text("✅ Đại hiệp không có task nào pending. Trống tâm thanh thản.")
-        return
-    tz = ZoneInfo(settings.scheduler_timezone)
-    lines = []
-    if overdue:
-        lines.append(f"🔥 *Quá hạn* ({len(overdue)}):")
-        for t in overdue:
-            d = t.deadline.astimezone(tz).strftime("%d/%m %H:%M") if t.deadline else "—"
-            lines.append(f"  • #{t.id} [{d}] {t.title}")
-        lines.append("")
-    if pending:
-        lines.append(f"📋 *Pending* ({len(pending)}):")
-        for t in pending[:15]:
-            d = t.deadline.astimezone(tz).strftime("%d/%m %H:%M") if t.deadline else "—"
-            lines.append(f"  • #{t.id} [{d}] {t.title}")
-    text = "\n".join(lines)
-    try:
-        await update.message.reply_text(text, parse_mode="Markdown")
-    except Exception:
-        await update.message.reply_text(text)
-    # Action buttons cho 5 task pending đầu tiên
-    for t in pending[:5]:
-        await update.message.reply_text(
-            f"#{t.id} — {t.title}",
-            reply_markup=task_done_keyboard(t.id),
-        )
 
 
 async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

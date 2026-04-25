@@ -19,7 +19,6 @@ Callback data convention (≤64 bytes):
   dtc:<topic_hash>   confirm delete topic
   dn:<id>            delete single note
   sn:<sched_id>:<min>  snooze reminder N phút
-  td:<task_id>       mark task done
   noop               no-op (placeholder)
 """
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -211,10 +210,4 @@ def snooze_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("⏸ 30p", callback_data=f"sn:{schedule_id}:30"),
             InlineKeyboardButton("⏸ 1h", callback_data=f"sn:{schedule_id}:60"),
         ]
-    ])
-
-
-def task_done_keyboard(task_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Done", callback_data=f"td:{task_id}")]
     ])

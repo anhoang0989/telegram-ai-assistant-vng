@@ -5,28 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-04-25
+### Removed — Bỏ Task entity
+- User đã có bot task riêng → bỏ feature `tasks` cho gọn:
+  - Xoá model `Task` + repo `tasks.py`
+  - Xoá tools `list_tasks`, `mark_task_done`
+  - Xoá `/tasks` command + `td:` callback + `task_done_keyboard`
+  - `save_meeting_summary` không còn auto-create Task rows
+    (action_items vẫn lưu trong `MeetingMinute.action_items` JSONB như cũ)
+  - Daily digest chỉ liệt kê lịch hôm nay, không còn section task
+
+### Fixed
+- Suppress pip root-user warning trong Docker build (`--root-user-action=ignore`)
+
 ## [0.7.0] - 2026-04-25
-### Added — Tasks, Daily digest, Smart/Snooze reminders
-- **Bảng `tasks`** — tách action items thành rows riêng có deadline + done flag.
-  - Field: `id, user_id, title, description, owner, deadline, done, source_meeting_id`.
-  - `save_meeting_summary` giờ **auto-create Task rows** từ mỗi action_item có deadline.
-- **Tools mới**:
-  - `list_tasks(filter)` — filter: `pending` (default) / `overdue` / `today` / `done` / `all`
-  - `mark_task_done(task_id)`
-  - `create_offset_reminder(reference_schedule_id, minutes_before, label?)` —
-    cho phép user nói "nhắc tao 30 phút trước cuộc họp X"; LLM dùng `list_schedules`
-    để tìm reference rồi gọi tool này, tự tính `scheduled_at - offset`.
-- **`/tasks` command** — list overdue + pending, mỗi task có button ✅ Done.
+### Added — Daily digest, Smart/Snooze reminders
+- **`create_offset_reminder` tool** — cho phép user nói "nhắc tao 30 phút trước
+  cuộc họp X"; LLM dùng `list_schedules` để tìm reference rồi gọi tool này,
+  tự tính `scheduled_at - offset`.
 - **Snooze reminder** — message reminder kèm 3 nút `⏸ 10p / 30p / 1h`.
   Bấm → tạo Schedule mới offset N phút từ now, fire lại sau.
-- **Daily digest 8:00 sáng** — APScheduler cron, gửi tất cả approved user:
-  lịch hôm nay + task có deadline hôm nay + task quá hạn. Skip nếu không có gì.
-- Admin `/members` stats giờ kèm `task_pending` count.
-- Cascade delete user data bao gồm cả `tasks` table.
-
-### Changed
-- `MeetingMinute.action_items` (JSONB) vẫn giữ làm raw record, nhưng nguồn truth
-  cho UI/listing giờ là bảng `tasks`.
+- **Daily digest 8:00 sáng** — APScheduler cron, gửi tất cả approved user
+  tóm tắt lịch hôm nay. Skip nếu không có lịch.
 
 ## [0.6.0] - 2026-04-25
 ### Added — Web search (Gemini grounding) + tighter tool gating
