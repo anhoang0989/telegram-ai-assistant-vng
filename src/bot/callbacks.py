@@ -41,6 +41,20 @@ from src.bot.keyboards import (
 logger = logging.getLogger(__name__)
 
 
+async def _safe_edit(query, text: str, reply_markup=None, parse_mode: str | None = "Markdown") -> None:
+    """Edit message với fallback plain-text khi Markdown parse fail."""
+    try:
+        await query.edit_message_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+    except Exception as e:
+        if parse_mode:
+            try:
+                await query.edit_message_text(text, reply_markup=reply_markup)
+                return
+            except Exception:
+                pass
+        logger.warning(f"edit_message_text failed: {e}")
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if query is None:
@@ -223,9 +237,9 @@ async def _pick_topic(update: Update, context: ContextTypes.DEFAULT_TYPE, draft_
     if not draft or draft["draft_id"] != draft_id:
         await update.callback_query.edit_message_text("⚠️ Draft hết hạn.")
         return
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📁 Topic: *{topic}*\n📝 *{draft['title']}*\n\n{draft['content']}\n\nDuyệt?",
-        parse_mode="Markdown",
         reply_markup=note_confirm_keyboard(draft_id),
     )
 
@@ -241,9 +255,9 @@ async def _pick_suggested_topic(update: Update, context: ContextTypes.DEFAULT_TY
         await update.callback_query.edit_message_text("⚠️ Không có topic gợi ý.")
         return
     drafts.update_note_topic(user_id, suggested)
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📁 Topic: *{suggested}*\n📝 *{draft['title']}*\n\n{draft['content']}\n\nDuyệt?",
-        parse_mode="Markdown",
         reply_markup=note_confirm_keyboard(draft_id),
     )
 
@@ -299,9 +313,9 @@ async def _list_schedules(update: Update, context: ContextTypes.DEFAULT_TYPE, pa
 
     total_pages = (len(items) + PAGE_SIZE - 1) // PAGE_SIZE
     page = max(0, min(page, total_pages - 1))
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📅 *Lịch sắp tới của đại hiệp* ({len(items)} mục, trang {page + 1}/{total_pages})",
-        parse_mode="Markdown",
         reply_markup=schedules_list_keyboard(items, page, total_pages),
     )
 
@@ -318,9 +332,9 @@ async def _view_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, sch
     tz = ZoneInfo(settings.scheduler_timezone)
     local = s.scheduled_at.astimezone(tz).strftime("%d/%m/%Y %H:%M")
     desc = f"\n\n_{s.description}_" if s.description else ""
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📌 *{s.title}*\n🕐 {local}\n🔁 {s.recurrence}{desc}",
-        parse_mode="Markdown",
         reply_markup=schedule_detail_keyboard(s.id),
     )
 
@@ -338,9 +352,9 @@ async def _delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, s
 # ============ LIST NOTES ============
 
 async def _notes_root(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         "📝 *Note của đại hiệp*\n\nXem theo:",
-        parse_mode="Markdown",
         reply_markup=notes_root_keyboard(),
     )
 
@@ -352,9 +366,9 @@ async def _notes_by_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not topics:
         await update.callback_query.edit_message_text("📁 Đại hiệp chưa có topic nào.")
         return
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📁 *Topics* ({len(topics)})",
-        parse_mode="Markdown",
         reply_markup=topics_list_keyboard(topics),
     )
 
@@ -366,9 +380,9 @@ async def _notes_by_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not dates:
         await update.callback_query.edit_message_text("📅 Đại hiệp chưa có note nào.")
         return
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"📅 *Note theo ngày* ({len(dates)} ngày)",
-        parse_mode="Markdown",
         reply_markup=dates_list_keyboard(dates),
     )
 
@@ -382,14 +396,14 @@ async def _view_topic(update: Update, context: ContextTypes.DEFAULT_TYPE, topic_
     async with AsyncSessionFactory() as session:
         notes = await notes_repo.list_by_topic(session, user_id, topic)
     if not notes:
-        await update.callback_query.edit_message_text(f"📁 Topic *{topic}* trống.", parse_mode="Markdown")
+        await _safe_edit(update.callback_query, f"📁 Topic *{topic}* trống.")
         return
     lines = [f"📁 *{topic}* ({len(notes)} notes)\n"]
     for i, n in enumerate(notes[:10], 1):
         lines.append(f"{i}. *{n.title}* — {n.content[:80]}")
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         "\n".join(lines),
-        parse_mode="Markdown",
         reply_markup=topic_detail_keyboard(topic_hash, notes),
     )
 
@@ -408,9 +422,9 @@ async def _view_date(update: Update, context: ContextTypes.DEFAULT_TYPE, date_st
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     rows = [[InlineKeyboardButton(f"🗑️ Xoá: {n.title[:40]}", callback_data=f"dn:{n.id}")] for n in notes[:10]]
     rows.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="lnd")])
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         "\n".join(lines),
-        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(rows),
     )
 
@@ -420,9 +434,9 @@ async def _confirm_delete_topic(update: Update, context: ContextTypes.DEFAULT_TY
     if not topic:
         await update.callback_query.edit_message_text("⚠️ Topic không hợp lệ.")
         return
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"⚠️ Xoá luôn cả topic *{topic}* và TẤT CẢ note bên trong?",
-        parse_mode="Markdown",
         reply_markup=confirm_delete_topic_keyboard(topic_hash),
     )
 
@@ -435,7 +449,7 @@ async def _delete_topic(update: Update, context: ContextTypes.DEFAULT_TYPE, topi
         return
     async with AsyncSessionFactory() as session:
         n = await notes_repo.delete_topic(session, user_id, topic)
-    await update.callback_query.edit_message_text(f"🗑️ Đã xoá topic *{topic}* ({n} notes).", parse_mode="Markdown")
+    await _safe_edit(update.callback_query, f"🗑️ Đã xoá topic *{topic}* ({n} notes).")
 
 
 async def _delete_note(update: Update, context: ContextTypes.DEFAULT_TYPE, note_id: int) -> None:
@@ -508,9 +522,9 @@ async def _revoke_member(update: Update, context: ContextTypes.DEFAULT_TYPE, tar
         return
     async with AsyncSessionFactory() as session:
         await appr_repo.set_status(session, target_id, "rejected")
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"⛔ Đã revoke user `{target_id}`. Data vẫn được giữ.",
-        parse_mode="Markdown",
     )
     try:
         await context.bot.send_message(
@@ -528,10 +542,10 @@ async def _confirm_delete_member(update: Update, context: ContextTypes.DEFAULT_T
     if target_id == settings.admin_user_id:
         await update.callback_query.edit_message_text("⛔ Không thể xoá admin.")
         return
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"⚠️ Xác nhận XOÁ user `{target_id}` và TOÀN BỘ data (note, lịch, meeting, conversation, key)?\n"
         f"Hành động không thể hoàn tác.",
-        parse_mode="Markdown",
         reply_markup=confirm_delete_member_keyboard(target_id),
     )
 
@@ -546,7 +560,7 @@ async def _delete_member(update: Update, context: ContextTypes.DEFAULT_TYPE, tar
     async with AsyncSessionFactory() as session:
         counts = await appr_repo.delete_user_data(session, target_id)
     summary = ", ".join(f"{k}={v}" for k, v in counts.items())
-    await update.callback_query.edit_message_text(
+    await _safe_edit(
+        update.callback_query,
         f"🗑️ Đã xoá user `{target_id}`.\n{summary}",
-        parse_mode="Markdown",
     )
