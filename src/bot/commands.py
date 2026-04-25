@@ -97,19 +97,69 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     is_admin = update.effective_user.id == settings.admin_user_id
     base = (
-        "📖 *Lệnh*\n\n"
-        "• `/start` — đăng ký / bắt đầu\n"
-        "• `/setkey` — hiện nút nhập key (Gemini/Groq)\n"
-        "• `/mykey` — xem trạng thái keys\n"
-        "• `/removekey` — xoá keys\n"
-        "• `/status` — xem quota còn lại hôm nay\n"
-        "• `/cancel` — huỷ flow đang chờ input\n\n"
-        "Ngoài ra đại hiệp cứ chat tự nhiên, tại hạ sẽ tự hiểu ý.\n\n"
-        "⚠️ *Bảo mật:* keys được mã hoá Fernet khi lưu. Nên nhắn key trong chat riêng."
+        "📖 *Hướng dẫn dùng tại hạ*\n\n"
+        "🙏 Tại hạ là trợ lý AI cá nhân của đại hiệp — giúp tra cứu, ghi chú, đặt lịch,"
+        " tóm tắt họp, phân tích chiến lược ngành game.\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🚀 *BẮT ĐẦU NHANH*\n"
+        "1. Gõ `/start` để đăng ký (admin sẽ duyệt)\n"
+        "2. Sau khi được duyệt, gõ `/setkey` nhập 2 API key:\n"
+        "   • *Gemini* (free): https://aistudio.google.com/apikey\n"
+        "   • *Groq* (free): https://console.groq.com/keys\n"
+        "3. Sau đó cứ chat tự nhiên — tại hạ tự hiểu ý đại hiệp\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "💬 *VÍ DỤ CHAT TỰ NHIÊN* (không cần lệnh)\n"
+        "• \"Kết quả U17 VN hôm qua thế nào?\" → tại hạ search Google\n"
+        "• \"Ghi lại idea LiveOps Tết: tặng skin lì xì\" → tạo note\n"
+        "• \"Nhắc tao 9h sáng mai họp QC\" → tạo lịch\n"
+        "• \"Nhắc tao 30 phút trước cuộc họp QC\" → tạo reminder offset\n"
+        "• \"Tóm tắt cho tao meeting này: [paste nội dung]\" → meeting minutes\n"
+        "• \"Phân tích trade-off của subscription model cho game RPG\" → tư vấn\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📋 *LỆNH CHÍNH*\n"
+        "• `/start` — đăng ký / về menu chính\n"
+        "• `/help` — xem hướng dẫn này\n"
+        "• `/schedules` — xem lịch sắp tới (có nút xoá)\n"
+        "• `/notes` — xem note đã lưu (theo topic / theo ngày)\n"
+        "• `/status` — xem quota free tier còn lại\n\n"
+        "🔑 *QUẢN LÝ API KEY*\n"
+        "• `/setkey` — nhập / đổi key Gemini hoặc Groq\n"
+        "• `/mykey` — xem trạng thái keys (đã có hay chưa)\n"
+        "• `/removekey` — xoá toàn bộ keys\n"
+        "• `/cancel` — huỷ flow đang chờ nhập input\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📱 *MENU GÓC DƯỚI* (bấm thay vì gõ lệnh)\n"
+        "• 📅 Lịch  • 📝 Note  • 🔑 Key  • 📊 Status\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "⏰ *NHẮC NHỞ THÔNG MINH*\n"
+        "• Reminder fire đúng giờ kèm 3 nút Snooze: ⏸ 10p / 30p / 1h\n"
+        "• Có thể tạo reminder offset \"nhắc trước X phút\" so với lịch khác\n"
+        "• 8:00 sáng mỗi ngày tại hạ tự gửi tóm tắt lịch hôm nay\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🛡️ *BẢO MẬT*\n"
+        "• Keys mã hoá Fernet khi lưu DB\n"
+        "• Tin nhắn chứa key tự xoá ngay sau khi save\n"
+        "• Log không bao giờ chứa plaintext key\n"
+        "• Chỉ chat riêng với bot, không paste key trong group\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "💡 *MẸO*\n"
+        "• Note có chủ đề (topic) — tại hạ sẽ gợi ý topic, đại hiệp pick hoặc nhập mới\n"
+        "• Trước khi tạo note/lịch sẽ có nút ✅ duyệt / ❌ huỷ — review trước khi ghi\n"
+        "• Hết quota free Gemini? đợi reset (RPM=1 phút, RPD=24h) hoặc upgrade trả phí\n"
+        "• Có 7-tier fallback model nên hầu như không bao giờ kẹt"
     )
     if is_admin:
-        base += "\n\n👑 *Lệnh admin:*\n• `/pending` — danh sách yêu cầu chờ duyệt"
-    await update.message.reply_text(base, parse_mode="Markdown")
+        base += (
+            "\n\n━━━━━━━━━━━━━━━━━━\n"
+            "👑 *LỆNH ADMIN*\n"
+            "• `/pending` — danh sách user chờ duyệt\n"
+            "• `/members` — quản lý user đã duyệt (xem stats / revoke / xoá)\n"
+            "• `/listmodels` — list Gemini model API ID thực tế (debug)"
+        )
+    try:
+        await update.message.reply_text(base, parse_mode="Markdown")
+    except Exception:
+        await update.message.reply_text(base)
 
 
 async def setkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
