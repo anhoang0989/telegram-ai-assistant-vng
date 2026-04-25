@@ -25,10 +25,13 @@ MAX_HISTORY_TURNS = 20
 MAX_AGENTIC_STEPS = 5
 
 TIERS = [
-    {"model": settings.llm_tier1, "provider": "gemini"},
-    {"model": settings.llm_tier2, "provider": "gemini"},
-    {"model": settings.llm_tier3, "provider": "gemini"},
-    {"model": settings.llm_tier4, "provider": "groq"},
+    {"model": settings.llm_tier1, "provider": "gemini"},  # 3-flash-lite — workhorse
+    {"model": settings.llm_tier2, "provider": "gemini"},  # 2.5-flash-lite — backup
+    {"model": settings.llm_tier3, "provider": "gemini"},  # 3-flash — reasoning
+    {"model": settings.llm_tier4, "provider": "gemini"},  # 2.5-flash — backup reasoning
+    {"model": settings.llm_tier5, "provider": "groq"},    # llama — cross-provider backup
+    {"model": settings.llm_tier6, "provider": "gemini"},  # 3-pro — paid only
+    {"model": settings.llm_tier7, "provider": "gemini"},  # 2.5-pro — paid only
 ]
 
 
@@ -55,18 +58,30 @@ async def _call_with_fallback(
         model = tier["model"]
 
         if not quota_tracker.available(user_id, model):
-            logger.info(f"[{user_id}] Tier {i} ({model}) quota exhausted, falling back")
+            logger.info(f"[{user_id}] Tier {i} ({model}) quota exhausted (local), falling back")
             continue
 
         try:
-            quota_tracker.record(user_id, model)
             text, tool_calls = await _call_tier(tier, messages, gemini_key, groq_key)
+            # Record AFTER success — call fail không nên tốn quota counter local
+            quota_tracker.record(user_id, model)
             return text, tool_calls, model
         except Exception as e:
-            logger.warning(f"[{user_id}] Tier {i} ({model}) failed: {e}. Trying next tier")
+            err = str(e)
+            # 429 → API xác nhận quota hết, đánh dấu để bỏ qua tier này trong session
+            if "RESOURCE_EXHAUSTED" in err or "429" in err or "quota" in err.lower():
+                logger.info(f"[{user_id}] Tier {i} ({model}) API quota exhausted, marking + falling back")
+                quota_tracker.mark_exhausted(user_id, model)
+            else:
+                logger.warning(f"[{user_id}] Tier {i} ({model}) failed: {e}. Trying next tier")
             continue
 
-    return "⚠️ Tất cả AI providers đang bận hoặc key của đại hiệp đã hết quota. Xin thử lại sau.", None, "none"
+    return (
+        "⚠️ Tại hạ đã thử qua tất cả tier nhưng key của đại hiệp đã hết quota free tier hôm nay.\n"
+        "• Gõ /status xem chi tiết\n"
+        "• Hoặc đợi reset (RPM = 1 phút, RPD = 24h)\n"
+        "• Hoặc upgrade key Gemini lên trả phí để dùng được Pro tier"
+    ), None, "none"
 
 
 async def chat(

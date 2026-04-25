@@ -6,12 +6,18 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-# Free tier limits per user per model
+# Free tier limits per user per model (verified từ Google AI Studio rate-limit dashboard 2026-04)
+# Pro models: free=0, chỉ work nếu key trả phí — vẫn track để tránh waste call
 DEFAULT_LIMITS = {
-    "gemini-2.5-flash-lite-preview-06-17": {"rpm": 30, "rpd": 1500},
-    "gemini-2.5-flash":                    {"rpm": 15, "rpd": 1500},
-    "gemini-2.5-pro":                      {"rpm": 5,  "rpd": 25},
-    "llama-3.3-70b-versatile":             {"rpm": 30, "rpd": 14400},
+    "gemini-3-flash-lite":      {"rpm": 15, "rpd": 500},   # workhorse
+    "gemini-2.5-flash-lite":    {"rpm": 10, "rpd": 20},
+    "gemini-3-flash":           {"rpm": 5,  "rpd": 20},
+    "gemini-2.5-flash":         {"rpm": 5,  "rpd": 20},
+    "llama-3.3-70b-versatile":  {"rpm": 30, "rpd": 1000},  # Groq free tier
+    # Pro models: free tier = 0. Đặt limit cao để local tracker không chặn —
+    # API sẽ tự trả 429 nếu key không trả phí, fallback sẽ skip sang tier kế.
+    "gemini-3-pro":             {"rpm": 999, "rpd": 999},
+    "gemini-2.5-pro":           {"rpm": 999, "rpd": 999},
 }
 
 
@@ -35,6 +41,12 @@ class ModelQuota:
         now = time.time()
         self._minute_calls.append(now)
         self._day_calls.append(now)
+
+    def mark_exhausted(self) -> None:
+        """Đánh dấu hết quota cho cả ngày — dùng khi API trả 429."""
+        now = time.time()
+        self._day_calls = [now] * self.rpd
+        self._minute_calls = [now] * self.rpm
 
 
 class QuotaTracker:
@@ -60,6 +72,11 @@ class QuotaTracker:
         quotas = self._user_quotas[user_id]
         if model in quotas:
             quotas[model].record()
+
+    def mark_exhausted(self, user_id: int, model: str) -> None:
+        quotas = self._user_quotas[user_id]
+        if model in quotas:
+            quotas[model].mark_exhausted()
 
     def status(self, user_id: int) -> dict[str, dict]:
         quotas = self._user_quotas[user_id]

@@ -1,8 +1,10 @@
 """
-Text handler: 3 paths
-  1. awaiting_email → user đang đăng ký, lưu email → notify admin
-  2. awaiting_key → user đang nhập key, lưu encrypted → confirm
-  3. default → chat với LLM (cần approved + có keys)
+Text handler — paths:
+  1. awaiting_email          → đăng ký
+  2. awaiting_key            → nhập API key
+  3. awaiting_note_topic     → nhập tên topic mới cho note draft
+  4. persistent menu shortcuts (📅 Lịch, 📝 Note, 🔑 Key, 📊 Status)
+  5. default                 → chat LLM. Nếu LLM tạo draft → show pick-topic / confirm keyboard.
 """
 import logging
 import re
@@ -13,14 +15,29 @@ from src.db.session import AsyncSessionFactory
 from src.db.repositories import conversation as conv_repo
 from src.db.repositories import user_keys as keys_repo
 from src.db.repositories import approvals as appr_repo
+from src.db.repositories import notes as notes_repo
+from src.db.repositories import schedules as sched_repo
 from src.ai.llm_router import chat
-from src.bot.callbacks import approval_keyboard
+from src.bot import drafts
+from src.bot.keyboards import (
+    approval_keyboard,
+    setkey_keyboard,
+    persistent_menu,
+    note_topic_picker,
+    note_confirm_keyboard,
+    schedule_confirm_keyboard,
+    schedules_list_keyboard,
+    notes_root_keyboard,
+    PAGE_SIZE,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_MSG = 4000
-
 DOMAIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,19}$")
+
+# Persistent menu shortcuts → command-like behavior
+MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status"}
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -28,17 +45,27 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = user.id
     text = update.message.text or ""
 
-    # Flow 1: signup — user đang nhập email/domain
+    # Flow 1: signup
     if context.user_data.get("awaiting_email"):
         await _handle_signup(update, context, text)
         return
 
-    # Flow 2: key input — user đang nhập API key
+    # Flow 2: key input
     if context.user_data.get("awaiting_key"):
         await _handle_key_input(update, context, text)
         return
 
-    # Flow 3: normal chat
+    # Flow 3: awaiting new topic name for note draft
+    if context.user_data.get("awaiting_note_topic"):
+        await _handle_new_topic_input(update, context, text)
+        return
+
+    # Flow 4: persistent menu shortcuts
+    if text.strip() in MENU_SHORTCUTS:
+        await _handle_menu_shortcut(update, context, text.strip())
+        return
+
+    # Flow 5: normal chat
     async with AsyncSessionFactory() as session:
         gemini_key, groq_key = await keys_repo.get_decrypted_keys(session, user_id)
 
@@ -72,12 +99,117 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.info(f"[{user_id}] Served by: {model_used}")
         await conv_repo.save(session, user_id, "assistant", response_text)
 
-    for i in range(0, len(response_text), MAX_TELEGRAM_MSG):
-        chunk = response_text[i:i + MAX_TELEGRAM_MSG]
+        # Check pending drafts → attach keyboard
+        note_draft = drafts.get_note_draft(user_id)
+        sched_draft = drafts.get_schedule_draft(user_id)
+
+        if note_draft:
+            await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
+            return
+        if sched_draft:
+            await _send_schedule_confirm(update, sched_draft, response_text)
+            return
+
+    # Send normal LLM response
+    await _send_long(update, response_text)
+
+
+async def _send_long(update: Update, text: str) -> None:
+    for i in range(0, len(text), MAX_TELEGRAM_MSG):
+        chunk = text[i:i + MAX_TELEGRAM_MSG]
         try:
             await update.message.reply_text(chunk, parse_mode="Markdown")
         except Exception:
             await update.message.reply_text(chunk)
+
+
+async def _send_note_topic_picker(update, session, user_id, draft, llm_text):
+    topics = await notes_repo.list_topics(session, user_id)
+    existing = [t for (t, _) in topics]
+    preview = (
+        f"📝 *Note draft*\n*{draft['title']}*\n\n{draft['content']}\n\n"
+        "Đại hiệp chọn topic:"
+    )
+    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
+    await update.message.reply_text(
+        msg[-MAX_TELEGRAM_MSG:],
+        parse_mode="Markdown",
+        reply_markup=note_topic_picker(draft["draft_id"], existing, draft.get("suggested_topic")),
+    )
+
+
+async def _send_schedule_confirm(update, draft, llm_text):
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(settings.scheduler_timezone)
+    try:
+        dt = _dt.fromisoformat(draft["scheduled_at"])
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        time_str = dt.astimezone(tz).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        time_str = draft["scheduled_at"]
+    preview = (
+        f"📌 *Lịch draft*\n*{draft['title']}*\n🕐 {time_str}\n"
+        f"🔁 {draft['recurrence']}"
+    )
+    if draft.get("description"):
+        preview += f"\n_{draft['description']}_"
+    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
+    await update.message.reply_text(
+        msg[-MAX_TELEGRAM_MSG:],
+        parse_mode="Markdown",
+        reply_markup=schedule_confirm_keyboard(draft["draft_id"]),
+    )
+
+
+async def _handle_new_topic_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    user_id = update.effective_user.id
+    draft_id = context.user_data.pop("awaiting_note_topic", None)
+    topic = text.strip()[:200]
+    if len(topic) < 1:
+        await update.message.reply_text("⚠️ Topic không được để trống.")
+        return
+    draft = drafts.update_note_topic(user_id, topic)
+    if not draft or draft["draft_id"] != draft_id:
+        await update.message.reply_text("⚠️ Draft đã hết hạn.")
+        return
+    await update.message.reply_text(
+        f"📁 Topic: *{topic}*\n📝 *{draft['title']}*\n\n{draft['content']}\n\nDuyệt?",
+        parse_mode="Markdown",
+        reply_markup=note_confirm_keyboard(draft_id),
+    )
+
+
+async def _handle_menu_shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    """Map persistent reply-keyboard buttons → corresponding command flow."""
+    user_id = update.effective_user.id
+    if text == "📅 Lịch":
+        async with AsyncSessionFactory() as session:
+            items = await sched_repo.get_upcoming(session, user_id, days_ahead=365)
+        if not items:
+            await update.message.reply_text("📅 Đại hiệp chưa có lịch nào sắp tới.")
+            return
+        total_pages = (len(items) + PAGE_SIZE - 1) // PAGE_SIZE
+        await update.message.reply_text(
+            f"📅 *Lịch sắp tới của đại hiệp* ({len(items)} mục, trang 1/{total_pages})",
+            parse_mode="Markdown",
+            reply_markup=schedules_list_keyboard(items, 0, total_pages),
+        )
+    elif text == "📝 Note":
+        await update.message.reply_text(
+            "📝 *Note của đại hiệp*\n\nXem theo:",
+            parse_mode="Markdown",
+            reply_markup=notes_root_keyboard(),
+        )
+    elif text == "🔑 Key":
+        await update.message.reply_text(
+            "🔑 Đại hiệp chọn loại key cần nhập:",
+            reply_markup=setkey_keyboard(),
+        )
+    elif text == "📊 Status":
+        from src.bot.commands import status_command
+        await status_command(update, context)
 
 
 async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
@@ -109,7 +241,6 @@ async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
         parse_mode="Markdown",
     )
 
-    # Notify admin
     try:
         uname = f"@{user.username}" if user.username else "(no username)"
         admin_text = (
@@ -134,9 +265,7 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     key = text.strip()
 
     if len(key) < 10 or " " in key or "\n" in key:
-        await update.message.reply_text(
-            "⚠️ Key trông không hợp lệ. Gõ /setkey để thử lại."
-        )
+        await update.message.reply_text("⚠️ Key trông không hợp lệ. Gõ /setkey để thử lại.")
         return
 
     async with AsyncSessionFactory() as session:
@@ -145,7 +274,6 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         elif provider == "groq":
             await keys_repo.set_keys(session, user_id, groq_key=key)
 
-    # Delete the key message to hide it from chat
     try:
         await update.message.delete()
     except Exception:
@@ -154,5 +282,6 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     label = "Gemini" if provider == "gemini" else "Groq"
     await update.effective_chat.send_message(
         f"✅ Tại hạ đã lưu {label} key (đã mã hoá). Tin nhắn chứa key đã xoá.\n\n"
-        "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác."
+        "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác.",
+        reply_markup=persistent_menu(),
     )

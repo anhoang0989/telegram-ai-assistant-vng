@@ -19,7 +19,16 @@ from src.db.repositories import user_keys as keys_repo
 from src.db.repositories import approvals as appr_repo
 from src.db.models import UserApproval
 from src.ai.quota_tracker import quota_tracker
-from src.bot.callbacks import approval_keyboard, setkey_keyboard
+from src.db.repositories import notes as notes_repo
+from src.db.repositories import schedules as sched_repo
+from src.bot.keyboards import (
+    approval_keyboard,
+    setkey_keyboard,
+    persistent_menu,
+    schedules_list_keyboard,
+    notes_root_keyboard,
+    PAGE_SIZE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +63,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if row and row.status == "approved":
         await update.message.reply_text(APPROVED_TEXT, reply_markup=setkey_keyboard())
+        await update.message.reply_text(
+            "📋 Menu nhanh ở góc dưới.",
+            reply_markup=persistent_menu(),
+        )
         return
 
     if row and row.status == "pending":
@@ -154,6 +167,29 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"  RPM: {s['rpm_used']}/{s['rpm_limit']} | RPD: {s['rpd_used']}/{s['rpd_limit']} {rpd_bar}"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def schedules_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    async with AsyncSessionFactory() as session:
+        items = await sched_repo.get_upcoming(session, user_id, days_ahead=365)
+    if not items:
+        await update.message.reply_text("📅 Đại hiệp chưa có lịch nào sắp tới.")
+        return
+    total_pages = (len(items) + PAGE_SIZE - 1) // PAGE_SIZE
+    await update.message.reply_text(
+        f"📅 *Lịch sắp tới của đại hiệp* ({len(items)} mục, trang 1/{total_pages})",
+        parse_mode="Markdown",
+        reply_markup=schedules_list_keyboard(items, 0, total_pages),
+    )
+
+
+async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "📝 *Note của đại hiệp*\n\nXem theo:",
+        parse_mode="Markdown",
+        reply_markup=notes_root_keyboard(),
+    )
 
 
 async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

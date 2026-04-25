@@ -31,6 +31,16 @@ def check_rate_limit(user_id: int) -> bool:
     return True
 
 
+def _safe_log_text(update: Update, context) -> str:
+    """Redact text khi user đang nhập API key — tránh leak key vào log."""
+    txt = update.effective_message.text if update.effective_message else None
+    if not txt:
+        return "(non-text)"
+    if context.user_data.get("awaiting_key"):
+        return f"<redacted API key, len={len(txt)}>"
+    return txt
+
+
 def _is_public(update: Update) -> bool:
     msg = update.effective_message
     if msg is None or not msg.text:
@@ -51,12 +61,12 @@ async def auth_middleware(update: Update, context, next_handler):
 
     # Admin bypass approval
     if user.id == settings.admin_user_id:
-        logger.info(f"[admin:{user.id}] {update.effective_message.text or '(non-text)'}")
+        logger.info(f"[admin:{user.id}] {_safe_log_text(update, context)}")
         return await next_handler(update, context)
 
     # Public commands (/start, /help) always allowed
     if _is_public(update):
-        logger.info(f"[{user.id}] (public) {update.effective_message.text}")
+        logger.info(f"[{user.id}] (public) {_safe_log_text(update, context)}")
         return await next_handler(update, context)
 
     # Check if pending signup flow (user_data flag set by /start)
@@ -84,5 +94,5 @@ async def auth_middleware(update: Update, context, next_handler):
             )
         return
 
-    logger.info(f"[{user.id}] {update.effective_message.text or '(non-text)'}")
+    logger.info(f"[{user.id}] {_safe_log_text(update, context)}")
     return await next_handler(update, context)

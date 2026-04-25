@@ -27,5 +27,9 @@ def classify(text: str) -> str:
     return "simple"
 
 
-# Maps complexity → starting tier index (0-based into TIER list)
-COMPLEXITY_START = {"simple": 0, "medium": 1, "complex": 2}
+# Maps complexity → starting tier index (0-based into TIER list).
+# - simple → tier 0 (gemini-3-flash-lite, 500 RPD, default workhorse)
+# - medium → tier 2 (gemini-3-flash, reasoning Gen3) — fallback xuống flash-lite nếu hết quota
+# - complex → tier 2 (gemini-3-flash) — Pro chỉ reach được qua fallback nếu key trả phí
+# Không dùng start=Pro vì free tier = 0, sẽ luôn fail call đầu tiên.
+COMPLEXITY_START = {"simple": 0, "medium": 2, "complex": 2}

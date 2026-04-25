@@ -10,6 +10,7 @@ from src.config import settings
 from src.services import note_service, schedule_service
 from src.db.repositories import notes as notes_repo, schedules as sched_repo
 from src.db.models import MeetingMinute
+from src.bot import drafts
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo(settings.scheduler_timezone)
@@ -23,14 +24,24 @@ async def dispatch_tool(
 ) -> dict:
     try:
         if tool_name == "save_note":
-            note = await note_service.save_note(
-                session,
+            # Không insert ngay — tạo draft, chat_handler sẽ show keyboard pick-topic + confirm
+            draft_id = drafts.put_note_draft(
                 user_id=user_id,
                 title=tool_input["title"],
                 content=tool_input["content"],
-                tags=tool_input.get("tags"),
+                suggested_topic=tool_input.get("topic"),
             )
-            return {"ok": True, "id": note.id, "title": note.title}
+            return {
+                "ok": True,
+                "draft": True,
+                "draft_id": draft_id,
+                "title": tool_input["title"],
+                "suggested_topic": tool_input.get("topic"),
+                "instruction": (
+                    "Đã chuẩn bị note draft. KHÔNG gọi thêm tool. "
+                    "Báo cho user biết tại hạ đã chuẩn bị note, đại hiệp pick topic + duyệt qua nút bên dưới."
+                ),
+            }
 
         elif tool_name == "search_notes":
             notes = await notes_repo.search(session, user_id, tool_input["query"])
@@ -67,20 +78,33 @@ async def dispatch_tool(
             }
 
         elif tool_name == "create_schedule":
-            schedule = await schedule_service.create_schedule(
-                session,
+            # Không insert ngay — tạo draft, chat_handler sẽ show confirm keyboard
+            draft_id = drafts.put_schedule_draft(
                 user_id=user_id,
                 title=tool_input["title"],
-                scheduled_at_str=tool_input["scheduled_at"],
+                scheduled_at=tool_input["scheduled_at"],
                 description=tool_input.get("description"),
                 recurrence=tool_input.get("recurrence", "none"),
             )
-            local_dt = schedule.scheduled_at.astimezone(TZ)
+            # Parse preview time
+            try:
+                from datetime import datetime as _dt
+                preview_dt = _dt.fromisoformat(tool_input["scheduled_at"])
+                if preview_dt.tzinfo is None:
+                    preview_dt = preview_dt.replace(tzinfo=TZ)
+                preview = preview_dt.astimezone(TZ).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                preview = tool_input["scheduled_at"]
             return {
                 "ok": True,
-                "id": schedule.id,
-                "title": schedule.title,
-                "scheduled_at_local": local_dt.strftime("%d/%m/%Y %H:%M"),
+                "draft": True,
+                "draft_id": draft_id,
+                "title": tool_input["title"],
+                "scheduled_at_local": preview,
+                "instruction": (
+                    "Đã chuẩn bị lịch draft. KHÔNG gọi thêm tool. "
+                    "Báo cho user biết lịch đã chuẩn bị, đại hiệp duyệt qua nút bên dưới."
+                ),
             }
 
         elif tool_name == "list_schedules":

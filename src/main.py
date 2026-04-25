@@ -11,6 +11,8 @@ from src.bot.commands import (
     removekey_command,
     cancel_command,
     pending_command,
+    schedules_command,
+    notes_command,
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
@@ -43,6 +45,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("removekey", wrap(removekey_command)))
     app.add_handler(CommandHandler("cancel", wrap(cancel_command)))
     app.add_handler(CommandHandler("pending", wrap(pending_command)))
+    app.add_handler(CommandHandler("schedules", wrap(schedules_command)))
+    app.add_handler(CommandHandler("notes", wrap(notes_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
@@ -50,14 +54,24 @@ def build_app() -> Application:
 
 
 async def init_db() -> None:
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight migration: thêm cột topic vào notes nếu chưa có (an toàn idempotent)
+        await conn.execute(text(
+            "ALTER TABLE notes ADD COLUMN IF NOT EXISTS topic VARCHAR(255)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_notes_topic ON notes(topic)"
+        ))
     logger.info("DB tables ready.")
 
 
 async def set_bot_menu(app: Application) -> None:
     commands = [
         BotCommand("start", "Bắt đầu / đăng ký"),
+        BotCommand("schedules", "Xem lịch đã đặt"),
+        BotCommand("notes", "Xem note đã lưu"),
         BotCommand("setkey", "Nhập API key (Gemini/Groq)"),
         BotCommand("mykey", "Xem trạng thái API keys"),
         BotCommand("removekey", "Xoá API keys"),

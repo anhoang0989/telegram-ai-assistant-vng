@@ -9,20 +9,27 @@ TOOLS = [
         "name": "save_note",
         "description": (
             "Lưu ghi chú khi user muốn ghi lại thông tin. "
-            "Dùng khi user nói 'ghi lại', 'note lại', 'lưu lại', hoặc liệt kê thông tin cần nhớ."
+            "Dùng khi user nói 'ghi lại', 'note lại', 'lưu lại', hoặc liệt kê thông tin cần nhớ. "
+            "Phải tự suy luận 1 'topic' phù hợp từ context hội thoại để nhóm note "
+            "(vd: 'Họp QC 25/04', 'Idea LiveOps', 'Research Genshin'). "
+            "Topic là gợi ý — user vẫn có quyền chọn topic khác qua nút."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "title": {"type": "string", "description": "Tiêu đề ngắn gọn (<80 ký tự)"},
+                "title": {"type": "string", "description": "Tiêu đề ngắn gọn của note (<80 ký tự)"},
                 "content": {"type": "string", "description": "Nội dung chi tiết ghi chú"},
+                "topic": {
+                    "type": "string",
+                    "description": "Chủ đề gợi ý để nhóm note, suy ra từ context (vd: 'Họp QC 25/04', 'Idea LiveOps')",
+                },
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Tags phân loại (vd: kpi, meeting, idea, game, vn)",
                 },
             },
-            "required": ["title", "content"],
+            "required": ["title", "content", "topic"],
         },
     },
     {

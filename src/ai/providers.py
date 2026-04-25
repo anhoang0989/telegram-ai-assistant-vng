@@ -16,6 +16,26 @@ from src.ai.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
+# Cache clients per api_key — tạo Client mới mỗi call gây latency 200-500ms
+_GEMINI_CLIENTS: dict[str, "genai.Client"] = {}
+_GROQ_CLIENTS: dict[str, AsyncGroq] = {}
+
+
+def _get_gemini_client(api_key: str) -> "genai.Client":
+    client = _GEMINI_CLIENTS.get(api_key)
+    if client is None:
+        client = genai.Client(api_key=api_key)
+        _GEMINI_CLIENTS[api_key] = client
+    return client
+
+
+def _get_groq_client(api_key: str) -> AsyncGroq:
+    client = _GROQ_CLIENTS.get(api_key)
+    if client is None:
+        client = AsyncGroq(api_key=api_key)
+        _GROQ_CLIENTS[api_key] = client
+    return client
+
 
 def _to_gemini_tools(tools: list[dict]) -> list[gtypes.Tool]:
     declarations = []
@@ -78,7 +98,7 @@ async def call_gemini(
     messages: list[dict],
     tools: list[dict],
 ) -> tuple[str, list[dict] | None]:
-    client = genai.Client(api_key=api_key)
+    client = _get_gemini_client(api_key)
     contents = _messages_to_gemini_contents(messages)
     config = gtypes.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
@@ -139,18 +159,33 @@ async def call_groq(
     messages: list[dict],
     tools: list[dict],
 ) -> tuple[str, list[dict] | None]:
-    client = AsyncGroq(api_key=api_key)
+    client = _get_groq_client(api_key)
     groq_messages = _messages_to_groq_format(messages)
     groq_tools = _to_groq_tools(tools) if tools else None
 
-    response = await client.chat.completions.create(
-        model=model,
-        messages=groq_messages,
-        tools=groq_tools,
-        tool_choice="auto" if groq_tools else None,
-        temperature=0.7,
-        max_tokens=2048,
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=groq_messages,
+            tools=groq_tools,
+            tool_choice="auto" if groq_tools else None,
+            temperature=0.7,
+            max_tokens=2048,
+        )
+    except Exception as e:
+        # Groq llama hay hallucinate tool name không có trong list → 400 tool_use_failed.
+        # Retry không kèm tools để ít nhất trả lời text được.
+        msg = str(e)
+        if "tool_use_failed" in msg or "was not in request.tools" in msg:
+            logger.warning(f"Groq tool hallucination on {model}, retrying without tools")
+            response = await client.chat.completions.create(
+                model=model,
+                messages=groq_messages,
+                temperature=0.7,
+                max_tokens=2048,
+            )
+        else:
+            raise
 
     choice = response.choices[0]
     text = choice.message.content or ""
