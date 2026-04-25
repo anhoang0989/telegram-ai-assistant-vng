@@ -167,6 +167,21 @@ async def get(session: AsyncSession, user_id: int, entry_id: int) -> KnowledgeEn
     return entry
 
 
+async def update_product(
+    session: AsyncSession,
+    user_id: int,
+    entry_id: int,
+    new_product: str | None,
+) -> bool:
+    """Đổi product của entry. None = move sang General."""
+    entry = await get(session, user_id, entry_id)
+    if entry is None:
+        return False
+    entry.product = normalize_product(new_product)
+    await session.commit()
+    return True
+
+
 async def delete(session: AsyncSession, user_id: int, entry_id: int) -> bool:
     entry = await get(session, user_id, entry_id)
     if entry is None:

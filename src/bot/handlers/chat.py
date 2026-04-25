@@ -67,6 +67,11 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _handle_new_knowledge_product_input(update, context, text)
         return
 
+    # Flow 3c: awaiting move entry to new product
+    if context.user_data.get("awaiting_move_entry_product"):
+        await _handle_move_entry_product_input(update, context, text)
+        return
+
     # Flow 4: persistent menu shortcuts
     if text.strip() in MENU_SHORTCUTS:
         await _handle_menu_shortcut(update, context, text.strip())
@@ -172,6 +177,34 @@ async def _send_knowledge_confirm(update, draft, llm_text):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
     except Exception:
         await update.message.reply_text(msg, reply_markup=kb)
+
+
+async def _handle_move_entry_product_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
+) -> None:
+    """User vừa nhập product mới sau khi bấm 📂 Đổi product trong entry detail."""
+    from src.db.repositories import knowledge as knowledge_repo
+    user_id = update.effective_user.id
+    entry_id = context.user_data.pop("awaiting_move_entry_product", None)
+    if entry_id is None:
+        return
+    raw = text.strip()
+    if raw.lower() in ("_general_", "none", "general", "_g_"):
+        new_product = None
+    else:
+        new_product = knowledge_repo.normalize_product(raw)
+    async with AsyncSessionFactory() as session:
+        ok = await knowledge_repo.update_product(session, user_id, entry_id, new_product)
+        if not ok:
+            await update.message.reply_text("❌ Không update được entry.")
+            return
+        entry = await knowledge_repo.get(session, user_id, entry_id)
+    label = f"🎮 {entry.product}" if entry.product else "🌐 General"
+    await update.message.reply_text(
+        f"✅ Đã chuyển entry *{entry.title}* sang {label}.\n"
+        "Gõ /knowledge để xem lại.",
+        parse_mode="Markdown",
+    )
 
 
 async def _handle_new_knowledge_product_input(

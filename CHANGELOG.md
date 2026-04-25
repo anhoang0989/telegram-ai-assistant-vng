@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-04-25
+### Added — Move entry sang product khác
+- **Nút "📂 Đổi product"** trong entry detail view của `/knowledge`.
+  Bấm → text input flow → gõ tên product mới (vd `JX2`, hoặc `_general_`/`none`
+  để chuyển về General) → bot update DB.
+- **Use case chính**: entries lưu từ v0.9.0 (chưa có product field) đều
+  ở General — giờ có thể move sang product cụ thể mà không cần re-create.
+- **Repo helper** `update_product()` với normalize.
+- **Callback `kme:<id>`** + `awaiting_move_entry_product` flag trong `user_data`.
+- **`/cancel` cập nhật** clear thêm các pending flag mới (note_topic,
+  knowledge_product, move_entry_product) cho nhất quán.
+
 ## [0.9.1] - 2026-04-25
 ### Added — Knowledge: product partition + confirm flow + `/knowledge` UI
 - **Cột `product VARCHAR(50)` trong `knowledge_entries`** (nullable, indexed)

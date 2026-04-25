@@ -227,8 +227,11 @@ async def removekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    context.user_data.pop("awaiting_key", None)
-    context.user_data.pop("awaiting_email", None)
+    for k in (
+        "awaiting_key", "awaiting_email", "awaiting_note_topic",
+        "awaiting_knowledge_product", "awaiting_move_entry_product",
+    ):
+        context.user_data.pop(k, None)
     await update.message.reply_text("🚫 Đã huỷ flow đang chờ input.")
 
 

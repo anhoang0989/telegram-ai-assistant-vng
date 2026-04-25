@@ -156,6 +156,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _knowledge_confirm_delete(update, context, int(parts[1]))
         elif head == "kdc":
             await _knowledge_delete(update, context, int(parts[1]))
+        elif head == "kme":
+            await _move_entry_product(update, context, int(parts[1]))
         else:
             logger.warning(f"Unknown callback data: {data}")
     except Exception as e:
@@ -837,6 +839,25 @@ async def _knowledge_delete(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await update.callback_query.edit_message_text("🗑️ Đã xoá entry.")
     else:
         await update.callback_query.edit_message_text("❌ Không xoá được.")
+
+
+async def _move_entry_product(update: Update, context: ContextTypes.DEFAULT_TYPE, entry_id: int) -> None:
+    """Cho user đổi product của entry sau khi đã lưu (vd entries v0.9.0 chưa có product)."""
+    user_id = update.effective_user.id
+    async with AsyncSessionFactory() as session:
+        entry = await knowledge_repo.get(session, user_id, entry_id)
+    if not entry:
+        await update.callback_query.edit_message_text("❌ Entry không tồn tại.")
+        return
+    context.user_data["awaiting_move_entry_product"] = entry_id
+    cur = entry.product or "(General/none)"
+    await update.callback_query.edit_message_text(
+        f"📂 Entry hiện ở product: *{cur}*\n📝 {entry.title}\n\n"
+        "Gõ tên product mới (vd: `JX1`, `JX2`).\n"
+        "Gõ `_general_` hoặc `none` để chuyển sang General.\n"
+        "Gõ /cancel để huỷ.",
+        parse_mode="Markdown",
+    )
 
 
 async def _set_preferred_model(update: Update, context: ContextTypes.DEFAULT_TYPE, model: str) -> None:

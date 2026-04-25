@@ -316,6 +316,7 @@ def knowledge_entries_keyboard(
 
 def knowledge_entry_detail_keyboard(entry_id: int, prod_token: str, cat: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📂 Đổi product", callback_data=f"kme:{entry_id}")],
         [InlineKeyboardButton("🗑️ Xoá entry", callback_data=f"kdl:{entry_id}")],
         [InlineKeyboardButton("⬅️ Quay lại list", callback_data=f"klp:{prod_token}:{cat}:0")],
     ])
