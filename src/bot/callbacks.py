@@ -521,6 +521,7 @@ async def _view_member(update: Update, context: ContextTypes.DEFAULT_TYPE, targe
         f"📊 Thống kê:\n"
         f"• Lịch sắp tới: {stats['upcoming_schedules']}\n"
         f"• Note: {stats['note_count']} (trong {stats['topic_count']} topic)\n"
+        f"• Knowledge: {stats.get('knowledge_count', 0)}\n"
         f"• Meeting: {stats['meeting_count']}\n"
         f"• Tin nhắn: {stats['msg_count']}"
     )

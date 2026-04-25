@@ -62,6 +62,7 @@ def build_app() -> Application:
 async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
+        # create_all sẽ tạo table mới chưa tồn tại (vd: knowledge_entries v0.9.0)
         await conn.run_sync(Base.metadata.create_all)
         # Lightweight migration: thêm cột topic vào notes nếu chưa có (an toàn idempotent)
         await conn.execute(text(

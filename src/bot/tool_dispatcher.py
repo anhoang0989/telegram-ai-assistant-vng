@@ -11,6 +11,7 @@ from datetime import timedelta
 from src.services import note_service, schedule_service
 from src.db.repositories import notes as notes_repo, schedules as sched_repo
 from src.db.repositories import user_keys as keys_repo
+from src.db.repositories import knowledge as knowledge_repo
 from src.db.models import MeetingMinute, Schedule
 from src.bot import drafts
 from src.ai.providers import gemini_web_search
@@ -202,6 +203,82 @@ async def dispatch_tool(
                 "id": meeting.id,
                 "title": meeting.title,
                 "action_items_count": len(tool_input.get("action_items", []) or []),
+            }
+
+        elif tool_name == "save_knowledge":
+            entry = await knowledge_repo.create(
+                session,
+                user_id=user_id,
+                category=tool_input.get("category", "other"),
+                title=tool_input["title"],
+                content=tool_input["content"],
+                tags=tool_input.get("tags"),
+            )
+            return {
+                "ok": True,
+                "id": entry.id,
+                "category": entry.category,
+                "title": entry.title,
+                "instruction": (
+                    "Đã lưu vào kho tri thức. Báo cho user biết entry đã được lưu kèm category. "
+                    "KHÔNG gọi thêm save_knowledge nữa cho cùng nội dung."
+                ),
+            }
+
+        elif tool_name == "search_knowledge":
+            query = tool_input.get("query", "").strip()
+            if not query:
+                return {"ok": False, "error": "Empty query"}
+            entries = await knowledge_repo.search(
+                session,
+                user_id=user_id,
+                query=query,
+                category=tool_input.get("category"),
+                limit=tool_input.get("limit", 5),
+            )
+            return {
+                "ok": True,
+                "count": len(entries),
+                "results": [
+                    {
+                        "id": e.id,
+                        "category": e.category,
+                        "title": e.title,
+                        "content": e.content[:1500],
+                        "tags": e.tags or [],
+                        "updated_at": e.updated_at.strftime("%d/%m/%Y %H:%M"),
+                    }
+                    for e in entries
+                ],
+                "instruction": (
+                    "Đây là kết quả từ kho tri thức cá nhân của user. "
+                    "Dùng để phân tích / phản biện / trả lời. "
+                    "Nếu count=0 → nói thẳng kho chưa có data, đề nghị user nhập."
+                ),
+            }
+
+        elif tool_name == "list_knowledge":
+            entries = await knowledge_repo.list_by_category(
+                session,
+                user_id=user_id,
+                category=tool_input.get("category"),
+                limit=tool_input.get("limit", 10),
+            )
+            categories = await knowledge_repo.list_categories(session, user_id)
+            return {
+                "ok": True,
+                "count": len(entries),
+                "categories_overview": [{"category": c, "count": n} for c, n in categories],
+                "results": [
+                    {
+                        "id": e.id,
+                        "category": e.category,
+                        "title": e.title,
+                        "tags": e.tags or [],
+                        "updated_at": e.updated_at.strftime("%d/%m/%Y %H:%M"),
+                    }
+                    for e in entries
+                ],
             }
 
         elif tool_name == "list_meetings":

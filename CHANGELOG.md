@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-25
+### Added — Personal Knowledge Base (text, BYO via chat)
+- **Bảng `knowledge_entries`** mới: id, user_id (indexed), category (indexed),
+  title, content, source, tags, timestamps. Auto-create qua `Base.metadata.create_all`.
+- **Categories**: `game_data | design | user_behavior | market | meeting_log | other`.
+  Helper `normalize_category()` chống typo / case mismatch.
+- **Repo `knowledge.py`**: create / search (ILIKE title+content) / list_by_category /
+  list_categories (group count) / get / delete / delete_all_for_user.
+- **3 tools mới** trong `tools.py`:
+  - `save_knowledge(category, title, content, tags?)` — gating CỨNG: chỉ save
+    khi user nói rõ "lưu data/knowledge/design/insight" hoặc paste >200 chars
+    + yêu cầu lưu. Phân biệt rõ với `save_note` (idea/todo) trong description.
+  - `search_knowledge(query, category?, limit=5)` — BẮT BUỘC gọi trước khi
+    trả lời câu hỏi về data/design/behavior/market RIÊNG của user.
+  - `list_knowledge(category?, limit=10)` — kèm `categories_overview` để LLM
+    biết cấu trúc kho.
+- **SYSTEM_PROMPT** thêm section "KHO TRI THỨC CÁ NHÂN" — phân biệt note vs
+  knowledge, ví dụ NÊN/KHÔNG GỌI cho cả 2.
+- **Cascade delete**: `delete_user_data()` xoá thêm `KnowledgeEntry`.
+- **Stats admin** (`user_stats`): thêm `knowledge_count`. Member detail view
+  hiển thị "Knowledge: N".
+- **Help text** thêm 2 ví dụ chat (save data + phân tích).
+
+### Notes
+- v0.9.0 KHÔNG có draft/confirm flow cho knowledge — tool save trực tiếp
+  insert DB. Tin cậy SYSTEM_PROMPT + tool description để tránh over-trigger.
+  Nếu thấy bot tự lưu sai → siết description thêm hoặc thêm confirm flow ở v0.9.1.
+- Search dùng ILIKE, đủ cho ~vài trăm entries. Upgrade tsvector / pgvector
+  khi corpus lớn (>1000 entries) hoặc cần semantic search.
+
 ## [0.8.1] - 2026-04-25
 ### Added — Model selector (`/model`)
 - **Lệnh `/model`** — keyboard cho user chọn model AI:

@@ -116,6 +116,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• \"Nhắc tao 9h sáng mai họp QC\" → tạo lịch\n"
         "• \"Nhắc tao 30 phút trước cuộc họp QC\" → tạo reminder offset\n"
         "• \"Tóm tắt cho tao meeting này: [paste nội dung]\" → meeting minutes\n"
+        "• \"Lưu data ARPU game X tháng 4: 45k VNĐ\" → save knowledge (game_data)\n"
+        "• \"Phân tích retention game X của tao\" → search knowledge → phản biện\n"
         "• \"Phân tích trade-off của subscription model cho game RPG\" → tư vấn\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "📋 *LỆNH CHÍNH*\n"
@@ -149,7 +151,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• Note có chủ đề (topic) — tại hạ sẽ gợi ý topic, đại hiệp pick hoặc nhập mới\n"
         "• Trước khi tạo note/lịch sẽ có nút ✅ duyệt / ❌ huỷ — review trước khi ghi\n"
         "• Hết quota free Gemini? đợi reset (RPM=1 phút, RPD=24h) hoặc upgrade trả phí\n"
-        "• Có 7-tier fallback model nên hầu như không bao giờ kẹt"
+        "• 9-tier fallback model (4 Gemini free + Groq + 2 Gemini Pro + 2 Claude) — `/model` để pin\n"
+        "• Knowledge khác Note: knowledge cho data/design/research lâu dài, note cho idea/todo nhanh"
     )
     if is_admin:
         base += (

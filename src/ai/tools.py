@@ -152,6 +152,84 @@ TOOLS = [
         },
     },
 
+    # ========== KNOWLEDGE BASE (per-user store: data, design, behavior, market) ==========
+    {
+        "name": "save_knowledge",
+        "description": (
+            "Lưu MỘT entry vào kho tri thức cá nhân của đại hiệp — KHÁC với save_note. "
+            "Knowledge dành cho data/design/research/behavior insight cần dùng để PHÂN TÍCH sau này; "
+            "note dành cho ghi chú nhanh / idea tản mát. "
+            "CHỈ gọi khi user nói RÕ RÀNG: 'lưu data', 'save knowledge', 'thêm vào kho', 'lưu design', "
+            "'ghi nhận insight này', 'add vào knowledge', hoặc paste 1 đoạn dài (>200 chars) về số liệu/design/research kèm yêu cầu lưu. "
+            "TUYỆT ĐỐI KHÔNG gọi cho: chat thường, hỏi tin tức, tóm tắt nhanh, idea ngắn (→ dùng save_note). "
+            "VÍ DỤ NÊN GỌI: 'lưu data ARPU game X tháng 4: 45k VNĐ', 'thêm vào kho design hệ thống guild của Y'. "
+            "VÍ DỤ KHÔNG GỌI: 'ghi lại idea LiveOps Tết' (→ note), 'phân tích retention Z' (→ search_knowledge trước, không save)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
+                    "description": (
+                        "Phân loại: game_data (số liệu DAU/ARPU/retention), design (system spec, design doc), "
+                        "user_behavior (insight social/survey), market (research thị trường/đối thủ), "
+                        "meeting_log (ghi nhận chốt từ họp), other"
+                    ),
+                },
+                "title": {"type": "string", "description": "Tiêu đề ngắn gọn (<80 ký tự)"},
+                "content": {"type": "string", "description": "Nội dung chi tiết — đầy đủ data/insight để dùng lại sau"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags phụ (vd: ['arpu', 'q2_2026', 'mobile']) — optional",
+                },
+            },
+            "required": ["category", "title", "content"],
+        },
+    },
+    {
+        "name": "search_knowledge",
+        "description": (
+            "Tìm trong kho tri thức cá nhân của đại hiệp. "
+            "BẮT BUỘC gọi TRƯỚC khi trả lời câu hỏi liên quan đến data/design/behavior/market của riêng đại hiệp "
+            "(vd: 'retention game X của tao thế nào?', 'design guild của Y ra sao?', 'phân tích ARPU Q2'). "
+            "Nếu không có result → nói thẳng 'kho tri thức chưa có thông tin này, đại hiệp nhập data trước'. "
+            "KHÔNG gọi cho câu hỏi tổng quát ngành (→ web_search hoặc trả lời từ knowledge chung)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Từ khoá tìm kiếm"},
+                "category": {
+                    "type": "string",
+                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
+                    "description": "Optional — filter theo category để giảm noise",
+                },
+                "limit": {"type": "integer", "description": "Số kết quả tối đa (default 5)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "list_knowledge",
+        "description": (
+            "Liệt kê knowledge entries gần đây. Dùng khi user hỏi 'kho tri thức có gì?', "
+            "'list data của tao', 'có design nào trong kho?'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
+                    "description": "Optional filter",
+                },
+                "limit": {"type": "integer", "description": "Default 10"},
+            },
+        },
+    },
+
     # ========== MEETINGS ==========
     {
         "name": "save_meeting_summary",
