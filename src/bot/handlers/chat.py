@@ -161,13 +161,23 @@ async def _send_knowledge_confirm(update, draft, llm_text):
     prod_label = f"🎮 {draft['product']}" if draft.get("product") else "🌐 General"
     tags_line = (" 🏷️ " + ", ".join(draft["tags"])) if draft.get("tags") else ""
     body = draft["content"]
-    if len(body) > 800:
-        body = body[:800] + "…(truncated)"
+    if len(body) > 600:
+        body = body[:600] + "…(truncated)"
+
+    related = draft.get("related") or []
+    related_section = ""
+    if related:
+        related_lines = [f"\n\n📎 *Có {len(related)} entry liên quan cùng scope* — review để tránh duplicate:"]
+        for r in related[:5]:
+            related_lines.append(f"  • {r['title'][:80]}")
+        related_section = "\n".join(related_lines)
+
     preview = (
         f"📚 Knowledge draft\n"
         f"{prod_label} | {cat_label}\n"
         f"📝 {draft['title']}{tags_line}\n\n"
-        f"{body}\n\n"
+        f"{body}"
+        f"{related_section}\n\n"
         f"Duyệt? (sai product → ✏️ Đổi product)"
     )
     msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview

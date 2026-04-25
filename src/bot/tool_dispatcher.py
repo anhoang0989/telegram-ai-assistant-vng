@@ -209,6 +209,22 @@ async def dispatch_tool(
             # Không insert ngay — tạo draft, chat handler sẽ show confirm keyboard
             category = knowledge_repo.normalize_category(tool_input.get("category"))
             product = knowledge_repo.normalize_product(tool_input.get("product"))
+            # Cross-reference: tìm 5 entries gần nhất cùng (product, category) để
+            # user review trước khi save (phát hiện duplicate/conflict thủ công).
+            product_filter = (
+                knowledge_repo.GENERAL_SENTINEL if product is None else product
+            )
+            related_entries = await knowledge_repo.list_filtered(
+                session,
+                user_id=user_id,
+                product=product_filter,
+                category=category,
+                limit=5,
+            )
+            related = [
+                {"id": e.id, "title": e.title}
+                for e in related_entries
+            ]
             draft_id = drafts.put_knowledge_draft(
                 user_id=user_id,
                 category=category,
@@ -216,6 +232,7 @@ async def dispatch_tool(
                 content=tool_input["content"],
                 tags=tool_input.get("tags"),
                 product=product,
+                related=related,
             )
             return {
                 "ok": True,
@@ -224,10 +241,12 @@ async def dispatch_tool(
                 "product": product,
                 "category": category,
                 "title": tool_input["title"],
+                "related_count": len(related),
                 "instruction": (
                     "Đã chuẩn bị knowledge draft. KHÔNG gọi thêm tool. "
-                    "Báo user biết tại hạ đã chuẩn bị entry kèm product+category, "
-                    "đại hiệp duyệt qua nút bên dưới (có nút đổi product nếu sai)."
+                    "Báo user biết tại hạ đã chuẩn bị entry kèm product+category. "
+                    "Nếu có related_count > 0 → mention với user 'có N entry liên quan trong cùng product+category, đại hiệp xem preview để tránh duplicate'. "
+                    "User duyệt qua nút bên dưới (có nút đổi product nếu sai)."
                 ),
             }
 

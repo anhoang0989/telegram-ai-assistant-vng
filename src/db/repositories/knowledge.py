@@ -160,6 +160,28 @@ async def list_categories_for_product(
     return [(row[0], row[1]) for row in result.all()]
 
 
+async def recent_entries(
+    session: AsyncSession,
+    user_id: int,
+    days: int = 7,
+    limit: int = 50,
+) -> list[KnowledgeEntry]:
+    """Entries created trong N ngày qua — dùng cho weekly digest."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    stmt = (
+        select(KnowledgeEntry)
+        .where(
+            KnowledgeEntry.user_id == user_id,
+            KnowledgeEntry.created_at >= cutoff,
+        )
+        .order_by(KnowledgeEntry.created_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def get(session: AsyncSession, user_id: int, entry_id: int) -> KnowledgeEntry | None:
     entry = await session.get(KnowledgeEntry, entry_id)
     if entry is None or entry.user_id != user_id:

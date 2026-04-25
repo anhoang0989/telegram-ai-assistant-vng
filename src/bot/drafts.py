@@ -79,7 +79,12 @@ def put_knowledge_draft(
     content: str,
     tags: list[str] | None,
     product: str | None = None,
+    related: list[dict] | None = None,
 ) -> str:
+    """related: list các entry liên quan cùng (product, category) để user
+    review trước khi save (tránh duplicate / conflict).
+    Format: [{'id': int, 'title': str}, ...]
+    """
     draft_id = _short_id()
     _PENDING_KNOWLEDGE[user_id] = {
         "draft_id": draft_id,
@@ -88,6 +93,7 @@ def put_knowledge_draft(
         "title": title,
         "content": content,
         "tags": tags,
+        "related": related or [],
         "ts": time.time(),
     }
     return draft_id

@@ -7,8 +7,11 @@ from apscheduler.triggers.cron import CronTrigger
 from src.config import settings
 from src.db.session import AsyncSessionFactory
 from src.db.repositories import schedules as repo
+from src.db.repositories import knowledge as knowledge_repo
+from src.db.repositories import user_keys as keys_repo
 from src.db.models import UserApproval, Schedule
 from src.services.schedule_service import format_reminder, TZ
+from src.services.knowledge_digest import generate_digest
 from src.bot.keyboards import snooze_keyboard
 
 logger = logging.getLogger(__name__)
@@ -42,8 +45,15 @@ def init_scheduler(bot) -> AsyncIOScheduler:
         id="daily_digest",
         replace_existing=True,
     )
+    # Weekly knowledge digest — Chủ nhật 9:00 sáng giờ VN (day_of_week=0=Mon, 6=Sun)
+    _scheduler.add_job(
+        weekly_knowledge_digest,
+        CronTrigger(day_of_week="sun", hour=9, minute=0, timezone=settings.scheduler_timezone),
+        id="weekly_knowledge_digest",
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("Scheduler started (reminders + daily digest 8:00).")
+    logger.info("Scheduler started (reminders + daily digest 8:00 + weekly knowledge digest sun 9:00).")
     return _scheduler
 
 
@@ -120,3 +130,44 @@ async def daily_digest() -> None:
                 logger.info(f"Daily digest sent to {u.user_id}")
             except Exception as e:
                 logger.error(f"Daily digest failed for {u.user_id}: {e}")
+
+
+async def weekly_knowledge_digest() -> None:
+    """Chủ nhật 9h sáng: phân tích entries tuần qua → 3 câu hỏi + 2 cảnh báo + 1 gợi ý.
+    Chỉ gửi cho user có entries trong 7 ngày qua + có Gemini key.
+    """
+    if _bot is None:
+        return
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(UserApproval).where(UserApproval.status == "approved")
+        )
+        users = list(result.scalars().all())
+
+        for u in users:
+            try:
+                entries = await knowledge_repo.recent_entries(session, u.user_id, days=7)
+                if not entries:
+                    continue  # skip nếu tuần qua user không nhập gì
+
+                gemini_key, _, _ = await keys_repo.get_decrypted_keys(session, u.user_id)
+                if not gemini_key:
+                    logger.info(f"Weekly digest skip {u.user_id}: no gemini key")
+                    continue
+
+                digest = await generate_digest(gemini_key, entries)
+                if not digest:
+                    continue
+
+                header = f"🗓️ *Weekly Knowledge Digest* — {len(entries)} entries tuần qua\n\n"
+                text = header + digest
+                # Telegram message limit 4096
+                if len(text) > 4000:
+                    text = text[:4000] + "\n…(truncated)"
+                try:
+                    await _bot.send_message(chat_id=u.user_id, text=text, parse_mode="Markdown")
+                except Exception:
+                    await _bot.send_message(chat_id=u.user_id, text=text)
+                logger.info(f"Weekly knowledge digest sent to {u.user_id} ({len(entries)} entries)")
+            except Exception as e:
+                logger.error(f"Weekly digest failed for {u.user_id}: {e}", exc_info=True)

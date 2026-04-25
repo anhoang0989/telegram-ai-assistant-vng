@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-04-25
+### Added — Smart proactive (cross-reference + weekly digest)
+- **Cross-reference khi save**: tool `save_knowledge` query top 5 entries gần
+  nhất cùng (product, category) trước khi tạo draft. Confirm preview hiển thị
+  section "📎 Có N entry liên quan" để user review tránh duplicate/conflict.
+  AI cũng được instruction mention với user nếu count > 0.
+- **Weekly knowledge digest** — APScheduler cron Chủ nhật 9:00 sáng VN:
+  - Lấy entries 7 ngày qua per user
+  - Skip user không có Gemini key hoặc không có entry
+  - Gen qua Gemini direct call (`gemini-2.5-flash`, ko qua tier fallback)
+  - Format Markdown: 📊 Tóm tắt + ❓ 3 câu hỏi mở + ⚠️ 2 cảnh báo + 💡 1 gợi ý
+  - Tone tại hạ/đại hiệp, sắc sảo, dựa data thực
+  - Truncate 4000 chars (Telegram limit)
+- **`recent_entries(days=7)` repo helper**.
+- **`services/knowledge_digest.py` mới** — encapsulate prompt + Gemini call.
+- **`drafts.put_knowledge_draft` thêm `related: list[dict]`** lưu trong memory.
+
+### Notes
+- Weekly digest dùng Gemini direct (không fallback). Nếu key hết quota / lỗi
+  → skip user đó cho lần này, log warning. User vẫn dùng bot bình thường.
+- Cross-reference đơn giản: list 5 entries gần nhất cùng scope. Không phân
+  tích duplicate semantically — chỉ show titles để user tự nhận. v1.0.0
+  upgrade vector embedding sẽ làm semantic matching tốt hơn.
+
 ## [0.9.2] - 2026-04-25
 ### Added — Move entry sang product khác
 - **Nút "📂 Đổi product"** trong entry detail view của `/knowledge`.
