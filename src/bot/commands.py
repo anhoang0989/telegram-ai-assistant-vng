@@ -169,6 +169,31 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def listmodels_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin only — list Gemini models thực tế từ API để biết tên API ID đúng."""
+    if update.effective_user.id != settings.admin_user_id:
+        await update.message.reply_text("⛔ Chỉ admin.")
+        return
+    user_id = update.effective_user.id
+    async with AsyncSessionFactory() as session:
+        gemini_key, _ = await keys_repo.get_decrypted_keys(session, user_id)
+    if not gemini_key:
+        await update.message.reply_text("⚠️ Admin chưa setup Gemini key. Gõ /setkey trước.")
+        return
+    try:
+        from google import genai
+        client = genai.Client(api_key=gemini_key)
+        models = []
+        for m in client.models.list():
+            name = m.name.replace("models/", "")
+            if "gemini" in name.lower():
+                models.append(name)
+        text = "📋 *Gemini models:*\n" + "\n".join(f"• `{m}`" for m in sorted(models)[:40])
+        await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
+
+
 async def schedules_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     async with AsyncSessionFactory() as session:

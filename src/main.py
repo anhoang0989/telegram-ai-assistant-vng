@@ -13,6 +13,7 @@ from src.bot.commands import (
     pending_command,
     schedules_command,
     notes_command,
+    listmodels_command,
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
@@ -47,6 +48,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("pending", wrap(pending_command)))
     app.add_handler(CommandHandler("schedules", wrap(schedules_command)))
     app.add_handler(CommandHandler("notes", wrap(notes_command)))
+    app.add_handler(CommandHandler("listmodels", wrap(listmodels_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
@@ -86,7 +88,13 @@ async def post_init(app: Application) -> None:
     await init_db()
     await set_bot_menu(app)
     init_scheduler(app.bot)
-    logger.info(f"Bot started (multi-tenant BYOK). Admin: {settings.admin_user_id}")
+    logger.info(
+        f"Bot started (multi-tenant BYOK). Admin: {settings.admin_user_id}\n"
+        f"Configured tiers: "
+        f"{settings.llm_tier1} → {settings.llm_tier2} → {settings.llm_tier3} → "
+        f"{settings.llm_tier4} → {settings.llm_tier5} → {settings.llm_tier6} → {settings.llm_tier7}\n"
+        f"⚠️ Nếu thấy 404 NOT_FOUND, dùng /listmodels (admin) để xem tên model API thực tế."
+    )
 
 
 def main() -> None:

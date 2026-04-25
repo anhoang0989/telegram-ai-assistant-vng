@@ -14,12 +14,14 @@ class Settings(BaseSettings):
     scheduler_timezone: str = "Asia/Ho_Chi_Minh"
 
     # Tier order: workhorse free-tier → backup free-tier → cross-provider → paid-only
-    llm_tier1: str = "gemini-3-flash-lite"          # 15 RPM / 500 RPD — main workhorse
+    # ⚠️ Tên model ID phải match Google API. Check log lúc startup để xem list_models()
+    # và override qua env vars LLM_TIER1..LLM_TIER7 nếu sai.
+    llm_tier1: str = "gemini-3-flash-lite-preview"  # 15 RPM / 500 RPD — main workhorse
     llm_tier2: str = "gemini-2.5-flash-lite"        # 10 RPM / 20 RPD — backup lite
-    llm_tier3: str = "gemini-3-flash"               # 5 RPM / 20 RPD — reasoning
+    llm_tier3: str = "gemini-3-flash-preview"       # 5 RPM / 20 RPD — reasoning
     llm_tier4: str = "gemini-2.5-flash"             # 5 RPM / 20 RPD — backup reasoning
     llm_tier5: str = "llama-3.3-70b-versatile"      # Groq backup, khác provider
-    llm_tier6: str = "gemini-3-pro"                 # Paid only (free=0)
+    llm_tier6: str = "gemini-3-pro-preview"         # Paid only (free=0)
     llm_tier7: str = "gemini-2.5-pro"               # Paid only (free=0)
 
 
