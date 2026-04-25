@@ -44,17 +44,17 @@ def approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def persistent_menu() -> ReplyKeyboardMarkup:
-    """Menu cố định ở góc dưới — luôn hiện sau khi user approved."""
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("📅 Lịch"), KeyboardButton("📝 Note")],
-            [KeyboardButton("🔑 Key"), KeyboardButton("📊 Status")],
-            [KeyboardButton("/start"), KeyboardButton("/help")],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+def persistent_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    """Menu cố định ở góc dưới — luôn hiện sau khi user approved.
+    Admin có thêm nút 👑 Members."""
+    rows = [
+        [KeyboardButton("📅 Lịch"), KeyboardButton("📝 Note")],
+        [KeyboardButton("🔑 Key"), KeyboardButton("📊 Status")],
+    ]
+    if is_admin:
+        rows.append([KeyboardButton("👑 Members")])
+    rows.append([KeyboardButton("/start"), KeyboardButton("/help")])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
 # ============ SCHEDULE ============
@@ -155,6 +155,41 @@ def topic_detail_keyboard(topic_hash: str, notes: list) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("🗑️ XOÁ CẢ TOPIC", callback_data=f"dt:{topic_hash}")])
     rows.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="lnt")])
     return InlineKeyboardMarkup(rows)
+
+
+# ============ ADMIN MEMBERS ============
+
+def members_list_keyboard(members, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    rows = []
+    start = page * PAGE_SIZE
+    for m in members[start:start + PAGE_SIZE]:
+        label = f"👤 {(m.full_name or m.email_or_domain or m.username or m.user_id)[:35]}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"vm:{m.user_id}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️ Trước", callback_data=f"mb:{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Sau ➡️", callback_data=f"mb:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    return InlineKeyboardMarkup(rows)
+
+
+def member_detail_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⛔ Revoke (giữ data)", callback_data=f"rv:{target_user_id}")],
+        [InlineKeyboardButton("🗑️ XOÁ user + data", callback_data=f"dm:{target_user_id}")],
+        [InlineKeyboardButton("⬅️ Quay lại", callback_data="mb:0")],
+    ])
+
+
+def confirm_delete_member_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Xoá luôn", callback_data=f"dmc:{target_user_id}"),
+            InlineKeyboardButton("❌ Không", callback_data=f"vm:{target_user_id}"),
+        ]
+    ])
 
 
 def confirm_delete_topic_keyboard(topic_hash: str) -> InlineKeyboardMarkup:

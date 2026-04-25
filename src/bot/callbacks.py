@@ -32,6 +32,9 @@ from src.bot.keyboards import (
     dates_list_keyboard,
     topic_detail_keyboard,
     confirm_delete_topic_keyboard,
+    members_list_keyboard,
+    member_detail_keyboard,
+    confirm_delete_member_keyboard,
     PAGE_SIZE,
 )
 
@@ -88,6 +91,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _delete_topic(update, context, parts[1])
         elif head == "dn":
             await _delete_note(update, context, int(parts[1]))
+        elif head == "mb":
+            await _members_list(update, context, int(parts[1]))
+        elif head == "vm":
+            await _view_member(update, context, int(parts[1]))
+        elif head == "rv":
+            await _revoke_member(update, context, int(parts[1]))
+        elif head == "dm":
+            await _confirm_delete_member(update, context, int(parts[1]))
+        elif head == "dmc":
+            await _delete_member(update, context, int(parts[1]))
         else:
             logger.warning(f"Unknown callback data: {data}")
     except Exception as e:
@@ -140,7 +153,7 @@ async def _handle_approval(update: Update, context: ContextTypes.DEFAULT_TYPE, d
             await context.bot.send_message(
                 chat_id=target_user_id,
                 text="📋 Menu nhanh đã sẵn sàng ở góc dưới.",
-                reply_markup=persistent_menu(),
+                reply_markup=persistent_menu(is_admin=(target_user_id == settings.admin_user_id)),
             )
         else:
             await context.bot.send_message(
@@ -433,3 +446,107 @@ async def _delete_note(update: Update, context: ContextTypes.DEFAULT_TYPE, note_
         await update.callback_query.edit_message_text("🗑️ Đã xoá note.")
     else:
         await update.callback_query.edit_message_text("❌ Không xoá được.")
+
+
+# ============ ADMIN MEMBERS ============
+
+def _admin_only(update: Update) -> bool:
+    return update.effective_user.id == settings.admin_user_id
+
+
+async def _members_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int) -> None:
+    if not _admin_only(update):
+        await update.callback_query.edit_message_text("⛔ Chỉ admin.")
+        return
+    async with AsyncSessionFactory() as session:
+        members = await appr_repo.list_approved(session)
+    if not members:
+        await update.callback_query.edit_message_text("👑 Chưa có member nào được duyệt.")
+        return
+    total_pages = (len(members) + PAGE_SIZE - 1) // PAGE_SIZE
+    page = max(0, min(page, total_pages - 1))
+    await update.callback_query.edit_message_text(
+        f"👑 Members ({len(members)}, trang {page + 1}/{total_pages})",
+        reply_markup=members_list_keyboard(members, page, total_pages),
+    )
+
+
+async def _view_member(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id: int) -> None:
+    if not _admin_only(update):
+        await update.callback_query.edit_message_text("⛔ Chỉ admin.")
+        return
+    async with AsyncSessionFactory() as session:
+        row = await appr_repo.get(session, target_id)
+        if not row:
+            await update.callback_query.edit_message_text("❌ Không tìm thấy member.")
+            return
+        stats = await appr_repo.user_stats(session, target_id)
+    uname = f"@{row.username}" if row.username else "(no username)"
+    text = (
+        f"👤 {row.full_name or 'Không rõ'} {uname}\n"
+        f"🆔 {row.user_id}\n"
+        f"🏷️ Domain: {row.email_or_domain}\n"
+        f"📅 Trạng thái: {row.status}\n"
+        f"━━━━━━━━━━\n"
+        f"📊 Thống kê:\n"
+        f"• Lịch sắp tới: {stats['upcoming_schedules']}\n"
+        f"• Note: {stats['note_count']} (trong {stats['topic_count']} topic)\n"
+        f"• Meeting: {stats['meeting_count']}\n"
+        f"• Tin nhắn: {stats['msg_count']}"
+    )
+    await update.callback_query.edit_message_text(
+        text, reply_markup=member_detail_keyboard(target_id)
+    )
+
+
+async def _revoke_member(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id: int) -> None:
+    if not _admin_only(update):
+        await update.callback_query.edit_message_text("⛔ Chỉ admin.")
+        return
+    if target_id == settings.admin_user_id:
+        await update.callback_query.edit_message_text("⛔ Không thể revoke admin.")
+        return
+    async with AsyncSessionFactory() as session:
+        await appr_repo.set_status(session, target_id, "rejected")
+    await update.callback_query.edit_message_text(
+        f"⛔ Đã revoke user `{target_id}`. Data vẫn được giữ.",
+        parse_mode="Markdown",
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=target_id,
+            text="⚠️ Quyền sử dụng bot của đại hiệp đã bị admin thu hồi.",
+        )
+    except Exception:
+        pass
+
+
+async def _confirm_delete_member(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id: int) -> None:
+    if not _admin_only(update):
+        await update.callback_query.edit_message_text("⛔ Chỉ admin.")
+        return
+    if target_id == settings.admin_user_id:
+        await update.callback_query.edit_message_text("⛔ Không thể xoá admin.")
+        return
+    await update.callback_query.edit_message_text(
+        f"⚠️ Xác nhận XOÁ user `{target_id}` và TOÀN BỘ data (note, lịch, meeting, conversation, key)?\n"
+        f"Hành động không thể hoàn tác.",
+        parse_mode="Markdown",
+        reply_markup=confirm_delete_member_keyboard(target_id),
+    )
+
+
+async def _delete_member(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id: int) -> None:
+    if not _admin_only(update):
+        await update.callback_query.edit_message_text("⛔ Chỉ admin.")
+        return
+    if target_id == settings.admin_user_id:
+        await update.callback_query.edit_message_text("⛔ Không thể xoá admin.")
+        return
+    async with AsyncSessionFactory() as session:
+        counts = await appr_repo.delete_user_data(session, target_id)
+    summary = ", ".join(f"{k}={v}" for k, v in counts.items())
+    await update.callback_query.edit_message_text(
+        f"🗑️ Đã xoá user `{target_id}`.\n{summary}",
+        parse_mode="Markdown",
+    )

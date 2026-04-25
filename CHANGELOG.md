@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-25
+### Added — Admin members management
+- `/members` — list user đã duyệt (paginate 5/page)
+- View detail member: stats count (lịch sắp tới, note, topic, meeting, message)
+- **Revoke** (set status=rejected, giữ data) — user không chat được
+- **Xoá user + data** (cascade: approval + keys + notes + schedules + meetings + conversations)
+  → confirm 2 bước, không thể xoá admin
+- Persistent menu của admin có thêm nút 👑 Members
+- `/listmodels` — admin tra tên Gemini model API thực tế
+
+### Fixed
+- Gemini API model IDs chính xác từ `client.models.list()`:
+  `gemini-3.1-flash-lite-preview` (workhorse), `gemini-3-flash-preview`,
+  `gemini-3.1-pro-preview`. Tên cũ `gemini-3-flash-lite` không tồn tại.
+- Markdown parse fallback khi LLM trả response có `*`/`_` không cân bằng
+
 ## [0.4.0] - 2026-04-25
 ### Added — UX & CRUD cho lịch + note
 - **Persistent menu** ở góc dưới: 📅 Lịch / 📝 Note / 🔑 Key / 📊 Status

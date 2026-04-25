@@ -14,6 +14,7 @@ from src.bot.commands import (
     schedules_command,
     notes_command,
     listmodels_command,
+    members_command,
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
@@ -49,6 +50,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("schedules", wrap(schedules_command)))
     app.add_handler(CommandHandler("notes", wrap(notes_command)))
     app.add_handler(CommandHandler("listmodels", wrap(listmodels_command)))
+    app.add_handler(CommandHandler("members", wrap(members_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))

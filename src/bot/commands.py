@@ -53,8 +53,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Admin luôn được bypass
     if user_id == settings.admin_user_id:
         await update.message.reply_text(
-            "👑 Chào admin. Gõ /pending để xem các yêu cầu đang chờ duyệt.\n"
-            "Gõ /help để xem đầy đủ lệnh."
+            "👑 Chào admin. Gõ /pending để xem các yêu cầu chờ duyệt, /members để quản lý user.\n"
+            "Gõ /help để xem đầy đủ lệnh.",
+            reply_markup=persistent_menu(is_admin=True),
         )
         return
 
@@ -65,7 +66,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(APPROVED_TEXT, reply_markup=setkey_keyboard())
         await update.message.reply_text(
             "📋 Menu nhanh ở góc dưới.",
-            reply_markup=persistent_menu(),
+            reply_markup=persistent_menu(is_admin=(user_id == settings.admin_user_id)),
         )
         return
 
@@ -167,6 +168,23 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"  RPM: {s['rpm_used']}/{s['rpm_limit']} | RPD: {s['rpd_used']}/{s['rpd_limit']} {rpd_bar}"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def members_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != settings.admin_user_id:
+        await update.message.reply_text("⛔ Chỉ admin.")
+        return
+    from src.bot.keyboards import members_list_keyboard
+    async with AsyncSessionFactory() as session:
+        members = await appr_repo.list_approved(session)
+    if not members:
+        await update.message.reply_text("👑 Chưa có member nào được duyệt.")
+        return
+    total_pages = (len(members) + PAGE_SIZE - 1) // PAGE_SIZE
+    await update.message.reply_text(
+        f"👑 Members ({len(members)}, trang 1/{total_pages})",
+        reply_markup=members_list_keyboard(members, 0, total_pages),
+    )
 
 
 async def listmodels_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

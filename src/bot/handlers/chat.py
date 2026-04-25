@@ -37,7 +37,7 @@ MAX_TELEGRAM_MSG = 4000
 DOMAIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,19}$")
 
 # Persistent menu shortcuts → command-like behavior
-MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status"}
+MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status", "👑 Members"}
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,6 +212,9 @@ async def _handle_menu_shortcut(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "📊 Status":
         from src.bot.commands import status_command
         await status_command(update, context)
+    elif text == "👑 Members":
+        from src.bot.commands import members_command
+        await members_command(update, context)
 
 
 async def _handle_signup(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
@@ -285,5 +288,5 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     await update.effective_chat.send_message(
         f"✅ Tại hạ đã lưu {label} key (đã mã hoá). Tin nhắn chứa key đã xoá.\n\n"
         "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác.",
-        reply_markup=persistent_menu(),
+        reply_markup=persistent_menu(is_admin=(user_id == settings.admin_user_id)),
     )
