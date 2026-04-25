@@ -16,6 +16,8 @@ DEFAULT_LIMITS = {
     "llama-3.3-70b-versatile":       {"rpm": 30, "rpd": 1000},
     "gemini-3.1-pro-preview":        {"rpm": 999, "rpd": 999},  # paid only
     "gemini-2.5-pro":                {"rpm": 999, "rpd": 999},  # paid only
+    "claude-haiku-4-5-20251001":     {"rpm": 999, "rpd": 999},  # Claude paid (Anthropic)
+    "claude-sonnet-4-6":             {"rpm": 999, "rpd": 999},  # Claude paid (Anthropic)
 }
 
 

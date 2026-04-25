@@ -65,6 +65,7 @@ class UserApiKey(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     gemini_key_encrypted: Mapped[str | None] = mapped_column(Text)
     groq_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    claude_key_encrypted: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

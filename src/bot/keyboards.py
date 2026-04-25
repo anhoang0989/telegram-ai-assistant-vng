@@ -30,9 +30,12 @@ PAGE_SIZE = 5
 def setkey_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🔑 Nhập key Gemini", callback_data="setkey:gemini"),
-            InlineKeyboardButton("🔑 Nhập key Groq", callback_data="setkey:groq"),
-        ]
+            InlineKeyboardButton("🔑 Gemini (free)", callback_data="setkey:gemini"),
+            InlineKeyboardButton("🔑 Groq (free)", callback_data="setkey:groq"),
+        ],
+        [
+            InlineKeyboardButton("🔑 Claude (paid)", callback_data="setkey:claude"),
+        ],
     ])
 
 

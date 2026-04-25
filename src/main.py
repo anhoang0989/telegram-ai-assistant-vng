@@ -68,6 +68,10 @@ async def init_db() -> None:
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_notes_topic ON notes(topic)"
         ))
+        # v0.8.0: thêm Claude key column (idempotent)
+        await conn.execute(text(
+            "ALTER TABLE user_api_keys ADD COLUMN IF NOT EXISTS claude_key_encrypted TEXT"
+        ))
     logger.info("DB tables ready.")
 
 
@@ -76,7 +80,7 @@ async def set_bot_menu(app: Application) -> None:
         BotCommand("start", "Bắt đầu / đăng ký"),
         BotCommand("schedules", "Xem lịch đã đặt"),
         BotCommand("notes", "Xem note đã lưu"),
-        BotCommand("setkey", "Nhập API key (Gemini/Groq)"),
+        BotCommand("setkey", "Nhập API key (Gemini/Groq/Claude)"),
         BotCommand("mykey", "Xem trạng thái API keys"),
         BotCommand("removekey", "Xoá API keys"),
         BotCommand("status", "Xem quota còn lại"),
@@ -94,7 +98,8 @@ async def post_init(app: Application) -> None:
         f"Bot started (multi-tenant BYOK). Admin: {settings.admin_user_id}\n"
         f"Configured tiers: "
         f"{settings.llm_tier1} → {settings.llm_tier2} → {settings.llm_tier3} → "
-        f"{settings.llm_tier4} → {settings.llm_tier5} → {settings.llm_tier6} → {settings.llm_tier7}\n"
+        f"{settings.llm_tier4} → {settings.llm_tier5} → {settings.llm_tier6} → {settings.llm_tier7} → "
+        f"{settings.llm_tier8} → {settings.llm_tier9}\n"
         f"⚠️ Nếu thấy 404 NOT_FOUND, dùng /listmodels (admin) để xem tên model API thực tế."
     )
 

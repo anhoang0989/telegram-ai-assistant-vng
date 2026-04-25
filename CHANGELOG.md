@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-25
+### Added — Claude (Anthropic) provider + 3-key BYOK
+- **Claude provider** trong `src/ai/providers.py` (`call_claude`) dùng
+  `anthropic` SDK async. Convert message format sang Anthropic schema
+  (text/tool_use blocks, tool_result trong user turn). Cache `AsyncAnthropic`
+  client theo api_key giống Gemini/Groq.
+- **2 tier mới** ưu tiên cuối cùng (paid only, chỉ dùng khi user nhập key):
+  - Tier 8: `claude-haiku-4-5-20251001`
+  - Tier 9: `claude-sonnet-4-6`
+- **`/setkey` hỗ trợ 3 provider** — keyboard có thêm nút "🔑 Claude (paid)".
+  Link console: https://console.anthropic.com/settings/keys
+- **Cột `claude_key_encrypted`** trong `user_api_keys` (Fernet). Migration
+  idempotent `ALTER TABLE ... IF NOT EXISTS` trong `init_db()`.
+- **`get_decrypted_keys` trả 3 keys** `(gemini, groq, claude)`. Mọi call site
+  đã update unpacking.
+- **`/mykey` hiển thị 3 keys** với label rõ "bắt buộc / optional".
+- **`chat()` nhận `claude_key`** + `keys: dict` — tier với provider thiếu
+  key được skip tự động trong fallback loop.
+
+### Changed
+- **Gemini là key BẮT BUỘC** (workhorse free tier). Groq + Claude optional.
+  Trước: yêu cầu cả Gemini + Groq mới cho chat.
+- **Help text + bot menu desc** cập nhật mention cả 3 provider.
+- **Post-init log** liệt kê 9 tier (trước 7).
+
 ## [0.7.1] - 2026-04-25
 ### Removed — Bỏ Task entity
 - User đã có bot task riêng → bỏ feature `tasks` cho gọn:

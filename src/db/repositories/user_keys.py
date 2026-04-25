@@ -24,14 +24,17 @@ async def get(session: AsyncSession, user_id: int) -> UserApiKey | None:
     return result.scalar_one_or_none()
 
 
-async def get_decrypted_keys(session: AsyncSession, user_id: int) -> tuple[str | None, str | None]:
-    """Returns (gemini_key, groq_key) in plaintext, or (None, None) if not set."""
+async def get_decrypted_keys(
+    session: AsyncSession, user_id: int
+) -> tuple[str | None, str | None, str | None]:
+    """Returns (gemini_key, groq_key, claude_key) plaintext, None nếu chưa có."""
     row = await get(session, user_id)
     if row is None:
-        return None, None
+        return None, None, None
     gemini = _decrypt(row.gemini_key_encrypted) if row.gemini_key_encrypted else None
     groq = _decrypt(row.groq_key_encrypted) if row.groq_key_encrypted else None
-    return gemini, groq
+    claude = _decrypt(row.claude_key_encrypted) if row.claude_key_encrypted else None
+    return gemini, groq, claude
 
 
 async def set_keys(
@@ -39,6 +42,7 @@ async def set_keys(
     user_id: int,
     gemini_key: str | None = None,
     groq_key: str | None = None,
+    claude_key: str | None = None,
 ) -> None:
     """Upsert. Passing None leaves that field unchanged; to clear, use remove()."""
     row = await get(session, user_id)
@@ -47,6 +51,7 @@ async def set_keys(
             user_id=user_id,
             gemini_key_encrypted=_encrypt(gemini_key) if gemini_key else None,
             groq_key_encrypted=_encrypt(groq_key) if groq_key else None,
+            claude_key_encrypted=_encrypt(claude_key) if claude_key else None,
         )
         session.add(row)
     else:
@@ -54,6 +59,8 @@ async def set_keys(
             row.gemini_key_encrypted = _encrypt(gemini_key)
         if groq_key is not None:
             row.groq_key_encrypted = _encrypt(groq_key)
+        if claude_key is not None:
+            row.claude_key_encrypted = _encrypt(claude_key)
     await session.commit()
 
 

@@ -180,17 +180,26 @@ async def _handle_approval(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         logger.error(f"Failed to notify user {target_user_id}: {e}")
 
 
+_PROVIDER_INFO = {
+    "gemini": ("Gemini", "https://aistudio.google.com/apikey"),
+    "groq":   ("Groq",   "https://console.groq.com/keys"),
+    "claude": ("Claude", "https://console.anthropic.com/settings/keys"),
+}
+
+
 async def _handle_setkey(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
     query = update.callback_query
     _, provider = data.split(":", 1)
-    if provider not in ("gemini", "groq"):
+    if provider not in _PROVIDER_INFO:
         return
     context.user_data["awaiting_key"] = provider
-    label = "Gemini" if provider == "gemini" else "Groq"
-    link = "https://aistudio.google.com/apikey" if provider == "gemini" else "https://console.groq.com/keys"
+    label, link = _PROVIDER_INFO[provider]
+    extra = ""
+    if provider == "claude":
+        extra = "\n\n⚠️ Claude là API trả phí (Anthropic). Đại hiệp tự nạp credit trong console."
     await query.edit_message_text(
         f"🔑 Đại hiệp vui lòng paste {label} key vào tin nhắn tiếp theo.\n\n"
-        f"Lấy key tại: {link}\n\nGõ /cancel để huỷ.",
+        f"Lấy key tại: {link}{extra}\n\nGõ /cancel để huỷ.",
         disable_web_page_preview=True,
     )
 

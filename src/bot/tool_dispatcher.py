@@ -30,7 +30,7 @@ async def dispatch_tool(
             query = tool_input.get("query", "").strip()
             if not query:
                 return {"ok": False, "error": "Empty query"}
-            gemini_key, _ = await keys_repo.get_decrypted_keys(session, user_id)
+            gemini_key, _, _ = await keys_repo.get_decrypted_keys(session, user_id)
             if not gemini_key:
                 return {"ok": False, "error": "Chưa có Gemini key để search"}
             result = await gemini_web_search(gemini_key, query)

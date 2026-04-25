@@ -12,6 +12,7 @@ import uuid
 from google import genai
 from google.genai import types as gtypes
 from groq import AsyncGroq
+from anthropic import AsyncAnthropic
 from src.ai.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Cache clients per api_key — tạo Client mới mỗi call gây latency 200-500ms
 _GEMINI_CLIENTS: dict[str, "genai.Client"] = {}
 _GROQ_CLIENTS: dict[str, AsyncGroq] = {}
+_CLAUDE_CLIENTS: dict[str, AsyncAnthropic] = {}
 
 
 def _get_gemini_client(api_key: str) -> "genai.Client":
@@ -34,6 +36,14 @@ def _get_groq_client(api_key: str) -> AsyncGroq:
     if client is None:
         client = AsyncGroq(api_key=api_key)
         _GROQ_CLIENTS[api_key] = client
+    return client
+
+
+def _get_claude_client(api_key: str) -> AsyncAnthropic:
+    client = _CLAUDE_CLIENTS.get(api_key)
+    if client is None:
+        client = AsyncAnthropic(api_key=api_key)
+        _CLAUDE_CLIENTS[api_key] = client
     return client
 
 
@@ -247,3 +257,91 @@ async def call_groq(
             for tc in choice.message.tool_calls
         ]
     return text, tool_calls
+
+
+# ========== CLAUDE (Anthropic) ==========
+
+def _to_claude_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": t["name"],
+            "description": t["description"],
+            "input_schema": t["input_schema"],
+        }
+        for t in tools
+    ]
+
+
+def _messages_to_claude_format(messages: list[dict]) -> list[dict]:
+    """Convert unified format → Anthropic messages format.
+    Claude: assistant message có thể chứa list[text|tool_use], user phản hồi tool qua tool_result.
+    """
+    out: list[dict] = []
+    for msg in messages:
+        role = msg["role"]
+        if role == "user":
+            out.append({"role": "user", "content": msg["content"]})
+        elif role == "assistant":
+            blocks = []
+            if msg.get("content"):
+                blocks.append({"type": "text", "text": msg["content"]})
+            for tc in msg.get("tool_calls", []) or []:
+                blocks.append({
+                    "type": "tool_use",
+                    "id": tc["id"],
+                    "name": tc["name"],
+                    "input": tc["input"],
+                })
+            # Claude assistant turn không được rỗng — fallback empty text
+            if not blocks:
+                blocks.append({"type": "text", "text": ""})
+            out.append({"role": "assistant", "content": blocks})
+        elif role == "tool":
+            result = msg["result"]
+            content_str = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+            out.append({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": msg["tool_call_id"],
+                    "content": content_str,
+                }],
+            })
+    return out
+
+
+async def call_claude(
+    api_key: str,
+    model: str,
+    messages: list[dict],
+    tools: list[dict],
+) -> tuple[str, list[dict] | None]:
+    client = _get_claude_client(api_key)
+    claude_messages = _messages_to_claude_format(messages)
+    claude_tools = _to_claude_tools(tools) if tools else None
+
+    kwargs = {
+        "model": model,
+        "max_tokens": 2048,
+        "system": SYSTEM_PROMPT,
+        "messages": claude_messages,
+        "temperature": 0.7,
+    }
+    if claude_tools:
+        kwargs["tools"] = claude_tools
+
+    response = await client.messages.create(**kwargs)
+
+    text_parts: list[str] = []
+    tool_calls: list[dict] = []
+    for block in response.content:
+        btype = getattr(block, "type", None)
+        if btype == "text":
+            text_parts.append(block.text or "")
+        elif btype == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "input": dict(block.input) if block.input else {},
+            })
+    return "".join(text_parts), tool_calls if tool_calls else None

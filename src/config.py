@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     llm_tier5: str = "llama-3.3-70b-versatile"        # Groq cross-provider
     llm_tier6: str = "gemini-3.1-pro-preview"         # Paid only
     llm_tier7: str = "gemini-2.5-pro"                 # Paid only
+    llm_tier8: str = "claude-haiku-4-5-20251001"      # Claude paid (optional, ưu tiên cuối)
+    llm_tier9: str = "claude-sonnet-4-6"              # Claude paid sonnet
 
 
 settings = Settings()

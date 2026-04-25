@@ -103,9 +103,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "━━━━━━━━━━━━━━━━━━\n"
         "🚀 *BẮT ĐẦU NHANH*\n"
         "1. Gõ `/start` để đăng ký (admin sẽ duyệt)\n"
-        "2. Sau khi được duyệt, gõ `/setkey` nhập 2 API key:\n"
-        "   • *Gemini* (free): https://aistudio.google.com/apikey\n"
-        "   • *Groq* (free): https://console.groq.com/keys\n"
+        "2. Sau khi được duyệt, gõ `/setkey` nhập API key:\n"
+        "   • *Gemini* (BẮT BUỘC, free): https://aistudio.google.com/apikey\n"
+        "   • *Groq* (optional, free fallback): https://console.groq.com/keys\n"
+        "   • *Claude* (optional, paid): https://console.anthropic.com/settings/keys\n"
         "3. Sau đó cứ chat tự nhiên — tại hạ tự hiểu ý đại hiệp\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "💬 *VÍ DỤ CHAT TỰ NHIÊN* (không cần lệnh)\n"
@@ -123,7 +124,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/notes` — xem note đã lưu (theo topic / theo ngày)\n"
         "• `/status` — xem quota free tier còn lại\n\n"
         "🔑 *QUẢN LÝ API KEY*\n"
-        "• `/setkey` — nhập / đổi key Gemini hoặc Groq\n"
+        "• `/setkey` — nhập / đổi key Gemini / Groq / Claude\n"
         "• `/mykey` — xem trạng thái keys (đã có hay chưa)\n"
         "• `/removekey` — xoá toàn bộ keys\n"
         "• `/cancel` — huỷ flow đang chờ nhập input\n\n"
@@ -172,7 +173,7 @@ async def setkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def mykey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     async with AsyncSessionFactory() as session:
-        gemini, groq = await keys_repo.get_decrypted_keys(session, user_id)
+        gemini, groq, claude = await keys_repo.get_decrypted_keys(session, user_id)
 
     def _mask(k: str | None) -> str:
         if not k:
@@ -181,8 +182,9 @@ async def mykey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await update.message.reply_text(
         "🔑 *API keys của đại hiệp:*\n\n"
-        f"• Gemini: {_mask(gemini)}\n"
-        f"• Groq: {_mask(groq)}\n\n"
+        f"• Gemini (bắt buộc): {_mask(gemini)}\n"
+        f"• Groq (optional, free fallback): {_mask(groq)}\n"
+        f"• Claude (optional, paid): {_mask(claude)}\n\n"
         "Thiếu key nào? Gõ /setkey để nhập.",
         parse_mode="Markdown",
     )
@@ -244,7 +246,7 @@ async def listmodels_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     user_id = update.effective_user.id
     async with AsyncSessionFactory() as session:
-        gemini_key, _ = await keys_repo.get_decrypted_keys(session, user_id)
+        gemini_key, _, _ = await keys_repo.get_decrypted_keys(session, user_id)
     if not gemini_key:
         await update.message.reply_text("⚠️ Admin chưa setup Gemini key. Gõ /setkey trước.")
         return

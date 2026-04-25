@@ -8,13 +8,14 @@ Flow:
   4. Lặp đến khi LLM không gọi tool nữa, trả về text cuối cùng cho user
 
 Quota + keys phân theo user_id → mỗi người free tier riêng.
+Tier với provider thiếu key (groq/claude) sẽ được skip tự động.
 """
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.ai.classifier import classify, COMPLEXITY_START
 from src.ai.quota_tracker import quota_tracker
-from src.ai.providers import call_gemini, call_groq
+from src.ai.providers import call_gemini, call_groq, call_claude
 from src.ai.tools import TOOLS
 from src.bot.tool_dispatcher import dispatch_tool
 
@@ -32,37 +33,48 @@ TIERS = [
     {"model": settings.llm_tier5, "provider": "groq"},    # llama — cross-provider backup
     {"model": settings.llm_tier6, "provider": "gemini"},  # 3-pro — paid only
     {"model": settings.llm_tier7, "provider": "gemini"},  # 2.5-pro — paid only
+    {"model": settings.llm_tier8, "provider": "claude"},  # claude haiku — paid optional
+    {"model": settings.llm_tier9, "provider": "claude"},  # claude sonnet — paid optional
 ]
 
 
 async def _call_tier(
     tier: dict,
     messages: list[dict],
-    gemini_key: str,
-    groq_key: str,
+    keys: dict[str, str | None],
 ) -> tuple[str, list[dict] | None]:
-    if tier["provider"] == "gemini":
-        return await call_gemini(gemini_key, tier["model"], messages, TOOLS)
-    return await call_groq(groq_key, tier["model"], messages, TOOLS)
+    provider = tier["provider"]
+    if provider == "gemini":
+        return await call_gemini(keys["gemini"], tier["model"], messages, TOOLS)
+    if provider == "groq":
+        return await call_groq(keys["groq"], tier["model"], messages, TOOLS)
+    if provider == "claude":
+        return await call_claude(keys["claude"], tier["model"], messages, TOOLS)
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 async def _call_with_fallback(
     user_id: int,
     messages: list[dict],
     start_tier: int,
-    gemini_key: str,
-    groq_key: str,
+    keys: dict[str, str | None],
 ) -> tuple[str, list[dict] | None, str]:
     for i in range(start_tier, len(TIERS)):
         tier = TIERS[i]
         model = tier["model"]
+        provider = tier["provider"]
+
+        # Skip tier nếu user chưa nhập key cho provider tương ứng
+        if not keys.get(provider):
+            logger.debug(f"[{user_id}] Tier {i} ({model}) skipped — no {provider} key")
+            continue
 
         if not quota_tracker.available(user_id, model):
             logger.info(f"[{user_id}] Tier {i} ({model}) quota exhausted (local), falling back")
             continue
 
         try:
-            text, tool_calls = await _call_tier(tier, messages, gemini_key, groq_key)
+            text, tool_calls = await _call_tier(tier, messages, keys)
             # Record AFTER success — call fail không nên tốn quota counter local
             quota_tracker.record(user_id, model)
             return text, tool_calls, model
@@ -80,7 +92,7 @@ async def _call_with_fallback(
         "⚠️ Tại hạ đã thử qua tất cả tier nhưng key của đại hiệp đã hết quota free tier hôm nay.\n"
         "• Gõ /status xem chi tiết\n"
         "• Hoặc đợi reset (RPM = 1 phút, RPD = 24h)\n"
-        "• Hoặc upgrade key Gemini lên trả phí để dùng được Pro tier"
+        "• Hoặc upgrade key Gemini lên trả phí, hoặc thêm Claude key (gõ /setkey)"
     ), None, "none"
 
 
@@ -90,13 +102,16 @@ async def chat(
     db_history: list[dict],
     user_message: str,
     gemini_key: str,
-    groq_key: str,
+    groq_key: str | None = None,
+    claude_key: str | None = None,
 ) -> tuple[str, str]:
     """Main entry point. Runs agentic loop with tool use. Returns (final_text, model_used)."""
     user_message = user_message[:MAX_INPUT_CHARS]
     complexity = classify(user_message)
     start_tier = COMPLEXITY_START[complexity]
     logger.info(f"[{user_id}] complexity={complexity} start_tier={start_tier} msg_len={len(user_message)}")
+
+    keys = {"gemini": gemini_key, "groq": groq_key, "claude": claude_key}
 
     messages: list[dict] = []
     for m in db_history[-(MAX_HISTORY_TURNS * 2):]:
@@ -106,7 +121,7 @@ async def chat(
     last_model = "none"
     for step in range(MAX_AGENTIC_STEPS):
         text, tool_calls, model = await _call_with_fallback(
-            user_id, messages, start_tier, gemini_key, groq_key,
+            user_id, messages, start_tier, keys,
         )
         last_model = model
 

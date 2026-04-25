@@ -67,16 +67,13 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Flow 5: normal chat
     async with AsyncSessionFactory() as session:
-        gemini_key, groq_key = await keys_repo.get_decrypted_keys(session, user_id)
+        gemini_key, groq_key, claude_key = await keys_repo.get_decrypted_keys(session, user_id)
 
-        if not gemini_key or not groq_key:
-            missing = []
-            if not gemini_key:
-                missing.append("Gemini")
-            if not groq_key:
-                missing.append("Groq")
+        # Gemini bắt buộc (workhorse free tier). Groq/Claude optional fallback.
+        if not gemini_key:
             await update.message.reply_text(
-                f"🔒 Đại hiệp còn thiếu key: {', '.join(missing)}.\n\nGõ /setkey để nhập."
+                "🔒 Đại hiệp chưa có Gemini key (bắt buộc — workhorse free tier).\n"
+                "Gõ /setkey để nhập. Groq + Claude là optional fallback."
             )
             return
 
@@ -89,7 +86,8 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         try:
             response_text, model_used = await chat(
-                session, user_id, history, text, gemini_key, groq_key,
+                session, user_id, history, text,
+                gemini_key=gemini_key, groq_key=groq_key, claude_key=claude_key,
             )
         except Exception as e:
             logger.error(f"chat() error: {e}", exc_info=True)
@@ -278,13 +276,18 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await keys_repo.set_keys(session, user_id, gemini_key=key)
         elif provider == "groq":
             await keys_repo.set_keys(session, user_id, groq_key=key)
+        elif provider == "claude":
+            await keys_repo.set_keys(session, user_id, claude_key=key)
+        else:
+            await update.message.reply_text("⚠️ Provider không hợp lệ.")
+            return
 
     try:
         await update.message.delete()
     except Exception:
         pass
 
-    label = "Gemini" if provider == "gemini" else "Groq"
+    label = {"gemini": "Gemini", "groq": "Groq", "claude": "Claude"}.get(provider, provider)
     await update.effective_chat.send_message(
         f"✅ Tại hạ đã lưu {label} key (đã mã hoá). Tin nhắn chứa key đã xoá.\n\n"
         "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác.",
