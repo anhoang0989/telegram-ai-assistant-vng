@@ -127,15 +127,16 @@ async def _send_note_topic_picker(update, session, user_id, draft, llm_text):
     topics = await notes_repo.list_topics(session, user_id)
     existing = [t for (t, _) in topics]
     preview = (
-        f"📝 *Note draft*\n*{draft['title']}*\n\n{draft['content']}\n\n"
+        f"📝 Note draft\n{draft['title']}\n\n{draft['content']}\n\n"
         "Đại hiệp chọn topic:"
     )
     msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
-    await update.message.reply_text(
-        msg[-MAX_TELEGRAM_MSG:],
-        parse_mode="Markdown",
-        reply_markup=note_topic_picker(draft["draft_id"], existing, draft.get("suggested_topic")),
-    )
+    msg = msg[-MAX_TELEGRAM_MSG:]
+    kb = note_topic_picker(draft["draft_id"], existing, draft.get("suggested_topic"))
+    try:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
+    except Exception:
+        await update.message.reply_text(msg, reply_markup=kb)
 
 
 async def _send_schedule_confirm(update, draft, llm_text):
@@ -150,17 +151,18 @@ async def _send_schedule_confirm(update, draft, llm_text):
     except Exception:
         time_str = draft["scheduled_at"]
     preview = (
-        f"📌 *Lịch draft*\n*{draft['title']}*\n🕐 {time_str}\n"
+        f"📌 Lịch draft\n{draft['title']}\n🕐 {time_str}\n"
         f"🔁 {draft['recurrence']}"
     )
     if draft.get("description"):
-        preview += f"\n_{draft['description']}_"
+        preview += f"\n{draft['description']}"
     msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
-    await update.message.reply_text(
-        msg[-MAX_TELEGRAM_MSG:],
-        parse_mode="Markdown",
-        reply_markup=schedule_confirm_keyboard(draft["draft_id"]),
-    )
+    msg = msg[-MAX_TELEGRAM_MSG:]
+    kb = schedule_confirm_keyboard(draft["draft_id"])
+    try:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
+    except Exception:
+        await update.message.reply_text(msg, reply_markup=kb)
 
 
 async def _handle_new_topic_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
