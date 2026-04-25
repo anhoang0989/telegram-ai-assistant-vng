@@ -9,13 +9,13 @@ from dataclasses import dataclass, field
 # Free tier limits per user per model (verified từ Google AI Studio rate-limit dashboard 2026-04)
 # Pro models: free=0, chỉ work nếu key trả phí — vẫn track để tránh waste call
 DEFAULT_LIMITS = {
-    "gemini-3-flash-lite-preview":  {"rpm": 15, "rpd": 500},
-    "gemini-2.5-flash-lite":        {"rpm": 10, "rpd": 20},
-    "gemini-3-flash-preview":       {"rpm": 5,  "rpd": 20},
-    "gemini-2.5-flash":             {"rpm": 5,  "rpd": 20},
-    "llama-3.3-70b-versatile":      {"rpm": 30, "rpd": 1000},
-    "gemini-3-pro-preview":         {"rpm": 999, "rpd": 999},  # paid only
-    "gemini-2.5-pro":               {"rpm": 999, "rpd": 999},  # paid only
+    "gemini-3.1-flash-lite-preview": {"rpm": 15, "rpd": 500},
+    "gemini-2.5-flash-lite":         {"rpm": 10, "rpd": 20},
+    "gemini-3-flash-preview":        {"rpm": 5,  "rpd": 20},
+    "gemini-2.5-flash":              {"rpm": 5,  "rpd": 20},
+    "llama-3.3-70b-versatile":       {"rpm": 30, "rpd": 1000},
+    "gemini-3.1-pro-preview":        {"rpm": 999, "rpd": 999},  # paid only
+    "gemini-2.5-pro":                {"rpm": 999, "rpd": 999},  # paid only
 }
 
 
