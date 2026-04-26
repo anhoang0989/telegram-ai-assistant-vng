@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-04-26
+### Fixed — web_search không trigger cho thời tiết / nhiệt độ
+- **Bug**: User hỏi "thời tiết hôm nay nóng ko" → bot trả "tại hạ không
+  có khả năng tra cứu thời tiết" thay vì gọi `web_search`. Nguyên nhân:
+  tool description + SYSTEM_PROMPT chỉ liệt kê "tin tức / sự kiện / giá
+  cả / số liệu" — KHÔNG mention thời tiết → LLM bảo thủ không liên kết.
+- **Fix**:
+  - Tool `web_search` description liệt kê rõ: thời tiết / nhiệt độ / mưa /
+    weather / lịch chiếu / giao thông / tỷ giá / chứng khoán / event
+  - Thêm rule "TUYỆT ĐỐI KHÔNG trả lời 'không có khả năng/chức năng tra
+    cứu' — tool đã tồn tại, phải dùng"
+  - SYSTEM_PROMPT thêm icons + ví dụ cụ thể "thời tiết hôm nay nóng ko"
+  - Quy tắc: phân vân → cứ search. Trả 0 result → nói "không tìm thấy",
+    KHÔNG nói "không có khả năng"
+
 ## [0.9.6] - 2026-04-26
 ### Added — HTML report export (mobile-first, self-contained)
 - **Tool mới `export_html_report`**: LLM gọi khi user yêu cầu "báo cáo",

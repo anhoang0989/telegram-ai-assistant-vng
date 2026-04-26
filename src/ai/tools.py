@@ -9,16 +9,28 @@ TOOLS = [
         "name": "web_search",
         "description": (
             "Tìm kiếm thông tin real-time qua Google Search grounding. "
-            "BẮT BUỘC dùng khi user hỏi: tin tức, sự kiện, kết quả thể thao, giá cả, "
-            "số liệu mới, báo cáo ngành, hoặc bất kỳ thông tin nào có thể đã thay đổi sau training. "
-            "KHÔNG bịa khi không chắc — luôn search trước rồi trả lời."
+            "BẮT BUỘC dùng cho MỌI câu hỏi về thực tại hiện tại (anything depending on 'now') — "
+            "TUYỆT ĐỐI KHÔNG TRẢ LỜI 'tại hạ không có khả năng/chức năng tra cứu' khi tool này tồn tại! "
+            "Use cases (KHÔNG GIỚI HẠN): "
+            "thời tiết / nhiệt độ / mưa / weather, "
+            "tin tức / news, kết quả thể thao / score / lịch đấu, "
+            "giá cả / tỷ giá / chứng khoán / crypto, "
+            "sự kiện / lễ / event hôm nay, "
+            "số liệu mới / báo cáo ngành / doanh thu game cập nhật, "
+            "lịch chiếu phim / showtimes, giao thông / kẹt xe, "
+            "bất kỳ thông tin nào có thể đã thay đổi sau training. "
+            "Nếu phân vân → search trước. KHÔNG bịa, KHÔNG nói 'không có khả năng'."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Câu truy vấn tìm kiếm, viết rõ ràng tự nhiên (vd: 'kết quả U17 Việt Nam vs Malaysia 24/04/2026')",
+                    "description": (
+                        "Câu truy vấn tự nhiên kèm context location/time nếu cần. "
+                        "Vd: 'thời tiết Hà Nội hôm nay', 'kết quả U17 Việt Nam vs Malaysia 24/04/2026', "
+                        "'giá vàng SJC hôm nay'."
+                    ),
                 },
             },
             "required": ["query"],
