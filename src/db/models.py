@@ -72,27 +72,6 @@ class UserApiKey(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
-class KnowledgeEntry(Base):
-    """Personal knowledge base per user — data, design, behavior, research...
-    AI dùng để phân tích, phản biện, đưa cảnh báo dựa trên data của riêng user.
-    Partition theo (product, category): product = sản phẩm cụ thể (JX1, JX2...)
-    hoặc NULL = General (data ngành/cross-product).
-    Categories: game_data | design | user_behavior | market | meeting_log | other
-    """
-    __tablename__ = "knowledge_entries"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    product: Mapped[str | None] = mapped_column(String(50), index=True)  # NULL = general/cross-product
-    category: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(String(20), default="chat")  # chat | file | url
-    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-
 class MeetingMinute(Base):
     __tablename__ = "meeting_minutes"
 

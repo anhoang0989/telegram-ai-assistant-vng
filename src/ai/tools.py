@@ -168,107 +168,6 @@ TOOLS = [
         },
     },
 
-    # ========== KNOWLEDGE BASE (per-user store: data, design, behavior, market) ==========
-    {
-        "name": "save_knowledge",
-        "description": (
-            "Lưu MỘT entry vào kho tri thức cá nhân của đại hiệp — KHÁC với save_note. "
-            "Knowledge dành cho data/design/research/behavior insight cần dùng để PHÂN TÍCH sau này; "
-            "note dành cho ghi chú nhanh / idea tản mát. "
-            "🚨 TOOL NÀY BẮT BUỘC PHẢI GỌI khi user yêu cầu lưu — KHÔNG ĐƯỢC tự viết text 'đã lưu' giả vờ. "
-            "Tool tạo DRAFT trong memory, user phải bấm nút ✅ confirm mới ghi DB. "
-            "CHỈ gọi khi user nói RÕ RÀNG: 'lưu data', 'save knowledge', 'thêm vào kho', 'lưu design', "
-            "'ghi nhận insight này', 'add vào knowledge', hoặc paste 1 đoạn dài (>200 chars) về số liệu/design/research kèm yêu cầu lưu. "
-            "TUYỆT ĐỐI KHÔNG gọi cho: chat thường, hỏi tin tức, tóm tắt nhanh, idea ngắn (→ dùng save_note). "
-            "VÍ DỤ NÊN GỌI: 'lưu data JX1 ARPU tháng 4: 45k VNĐ' (product='JX1'), 'thêm vào kho design hệ thống guild JX20' (product='JX20', KHÔNG được sửa thành JX2). "
-            "VÍ DỤ KHÔNG GỌI: 'ghi lại idea LiveOps Tết' (→ note), 'phân tích retention Z' (→ search_knowledge trước, không save). "
-            "PRODUCT VERBATIM: tên product giữ NGUYÊN VẸN (JX20 ≠ JX2, JX1.5 ≠ JX1). KHÔNG auto-correct."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "product": {
-                    "type": "string",
-                    "description": (
-                        "Sản phẩm/game cụ thể mà entry này thuộc về (vd: 'JX1', 'JX2', 'VLTKM'). "
-                        "BẮT BUỘC infer từ context khi user mention game cụ thể. "
-                        "Bỏ trống / null nếu data chung (research ngành, market overview cross-product)."
-                    ),
-                },
-                "category": {
-                    "type": "string",
-                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
-                    "description": (
-                        "Phân loại: game_data (số liệu DAU/ARPU/retention), design (system spec, design doc), "
-                        "user_behavior (insight social/survey), market (research thị trường/đối thủ), "
-                        "meeting_log (ghi nhận chốt từ họp), other"
-                    ),
-                },
-                "title": {"type": "string", "description": "Tiêu đề ngắn gọn (<80 ký tự)"},
-                "content": {"type": "string", "description": "Nội dung chi tiết — đầy đủ data/insight để dùng lại sau"},
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Tags phụ (vd: ['arpu', 'q2_2026', 'mobile']) — optional",
-                },
-            },
-            "required": ["category", "title", "content"],
-        },
-    },
-    {
-        "name": "search_knowledge",
-        "description": (
-            "Tìm trong kho tri thức cá nhân của đại hiệp. "
-            "BẮT BUỘC gọi TRƯỚC khi trả lời câu hỏi liên quan đến data/design/behavior/market của riêng đại hiệp "
-            "(vd: 'retention JX1 của tao thế nào?', 'design guild JX2 ra sao?'). "
-            "QUAN TRỌNG: nếu user mention game cụ thể (JX1, JX2...) → BẮT BUỘC truyền product để tránh trộn data sản phẩm. "
-            "Nếu không có result → nói thẳng 'kho chưa có data <product>', đề nghị user nhập. "
-            "KHÔNG gọi cho câu hỏi tổng quát ngành (→ web_search hoặc trả lời từ knowledge chung)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Từ khoá tìm kiếm"},
-                "product": {
-                    "type": "string",
-                    "description": (
-                        "Filter theo sản phẩm (vd: 'JX1'). BẮT BUỘC khi user hỏi về game cụ thể. "
-                        "Bỏ qua nếu user hỏi cross-product hoặc data chung."
-                    ),
-                },
-                "category": {
-                    "type": "string",
-                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
-                    "description": "Optional — filter theo category để giảm noise",
-                },
-                "limit": {"type": "integer", "description": "Số kết quả tối đa (default 5)"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "list_knowledge",
-        "description": (
-            "Liệt kê knowledge entries gần đây. Dùng khi user hỏi 'kho có gì?', "
-            "'list data JX1', 'có design nào trong JX2?'. Truyền product nếu user mention game."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "product": {
-                    "type": "string",
-                    "description": "Optional — filter theo sản phẩm (vd: 'JX1')",
-                },
-                "category": {
-                    "type": "string",
-                    "enum": ["game_data", "design", "user_behavior", "market", "meeting_log", "other"],
-                    "description": "Optional filter",
-                },
-                "limit": {"type": "integer", "description": "Default 10"},
-            },
-        },
-    },
-
     # ========== HTML REPORT EXPORT ==========
     {
         "name": "export_html_report",
@@ -277,7 +176,6 @@ TOOLS = [
             "'báo cáo', 'report', 'xuất report', 'phân tích đầy đủ', 'tổng hợp full', 'export file'. "
             "TUYỆT ĐỐI KHÔNG dùng cho chat thường / câu hỏi nhanh / phân tích ngắn (→ trả lời inline). "
             "TRƯỚC KHI GỌI: tự viết nội dung CHẤT LƯỢNG CAO theo từng section bằng markdown đầy đủ. "
-            "MEMUST workflow: nếu liên quan data user → gọi search_knowledge trước để có data thực. "
             "TIP: nếu đại hiệp có Claude key, đề nghị pin /model Claude Sonnet 4.6 trước khi yêu cầu report — "
             "Claude viết long-form chất lượng cao nhất."
         ),

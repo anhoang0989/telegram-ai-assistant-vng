@@ -28,8 +28,6 @@ from src.bot.keyboards import (
     schedule_confirm_keyboard,
     schedules_list_keyboard,
     notes_root_keyboard,
-    knowledge_confirm_keyboard,
-    CATEGORY_LABELS,
     PAGE_SIZE,
 )
 
@@ -54,7 +52,7 @@ async def _typing_loop(chat, stop_event: asyncio.Event) -> None:
             continue
 
 # Persistent menu shortcuts → command-like behavior
-MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "📚 Knowledge", "🔑 Key", "📊 Status", "👑 Members"}
+MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status", "👑 Members"}
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -75,16 +73,6 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Flow 3: awaiting new topic name for note draft
     if context.user_data.get("awaiting_note_topic"):
         await _handle_new_topic_input(update, context, text)
-        return
-
-    # Flow 3b: awaiting new product name for knowledge draft
-    if context.user_data.get("awaiting_knowledge_product"):
-        await _handle_new_knowledge_product_input(update, context, text)
-        return
-
-    # Flow 3c: awaiting move entry to new product
-    if context.user_data.get("awaiting_move_entry_product"):
-        await _handle_move_entry_product_input(update, context, text)
         return
 
     # Flow 4: persistent menu shortcuts
@@ -176,48 +164,13 @@ async def run_llm_turn(
 
         note_draft = drafts.get_note_draft(user_id)
         sched_draft = drafts.get_schedule_draft(user_id)
-        know_draft = drafts.get_knowledge_draft(user_id)
         pending_report = drafts.get_report(user_id)
-
-        # Defensive: detect AI hallucinated save without actually calling save tool.
-        # Phrases observed in production faking save:
-        _fake_save_phrases = (
-            "đã lưu thông tin", "đã lưu data", "đã lưu vào kho",
-            "đã save", "đã ghi vào kho", "đã thêm vào kho",
-            "đã được ghi nhận", "đã được lưu", "lưu trực tiếp vào hệ thống",
-            "lưu thẳng vào hệ thống", "lưu vào hệ thống để đại hiệp",
-            "dữ liệu đã được", "đã được tại hạ ghi",
-        )
-        # Pattern fake: AI tự format bullet list giả vờ là tool result
-        # "**Sản phẩm:** X / **Danh mục:** Y / **Tiêu đề:** ..."
-        rt = response_text or ""
-        rt_lower = rt.lower()
-        has_fake_phrase = any(p in rt_lower for p in _fake_save_phrases)
-        has_tool_result_format = (
-            ("**sản phẩm:**" in rt_lower or "**product:**" in rt_lower)
-            and ("**danh mục:**" in rt_lower or "**category:**" in rt_lower)
-        )
-        if (has_fake_phrase or has_tool_result_format) and not (know_draft or note_draft):
-            logger.warning(
-                f"[{user_id}] HALLUCINATION detected (phrase={has_fake_phrase} "
-                f"toolFormat={has_tool_result_format}). "
-                f"Response head: {rt[:300]!r}"
-            )
-            response_text = (
-                "⚠️ Tại hạ vừa định trả lời sai (giả vờ đã lưu mà thực ra chưa gọi tool). "
-                "Đại hiệp gõ lại yêu cầu rõ — vd: '**lưu lại data này vào knowledge**' — "
-                "tại hạ sẽ tạo draft đúng kèm nút duyệt ✅/❌.\n\n"
-                "(Response gốc đã invalidate, không tin được):\n\n" + rt[:1500]
-            )
 
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
             return
         if sched_draft:
             await _send_schedule_confirm(update, sched_draft, response_text)
-            return
-        if know_draft:
-            await _send_knowledge_confirm(update, know_draft, response_text)
             return
         if pending_report:
             await _send_html_report(update, response_text)
@@ -288,115 +241,6 @@ async def _send_note_topic_picker(update, session, user_id, draft, llm_text):
         logger.info(f"[{user_id}] note picker sent, draft_id={draft['draft_id']}")
     except Exception as e:
         logger.error(f"[{user_id}] note picker fail: {e}")
-
-
-async def _send_knowledge_confirm(update, draft, llm_text):
-    """Gửi ack text + preview+buttons thành 2 message TÁCH RIÊNG.
-    Trước đây gộp 1 message → nếu llm_text có Markdown lỗi → fallback plain
-    text → truncate sai → buttons có thể không render. Tách 2 → tin cậy hơn.
-    """
-    user_id = update.effective_user.id
-
-    # Message 1: LLM ack (optional, có thể fail riêng không ảnh hưởng preview)
-    if llm_text and llm_text.strip():
-        try:
-            await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG], parse_mode="Markdown")
-        except Exception as e:
-            logger.warning(f"[{user_id}] ack markdown fail: {e}, retry plain")
-            try:
-                await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG])
-            except Exception as e2:
-                logger.error(f"[{user_id}] ack plain also fail: {e2}")
-
-    # Message 2: Preview + buttons (CRITICAL — phải render được)
-    cat_label = CATEGORY_LABELS.get(draft["category"], draft["category"])
-    prod_label = f"🎮 {draft['product']}" if draft.get("product") else "🌐 General"
-    tags_line = (" 🏷️ " + ", ".join(draft["tags"])) if draft.get("tags") else ""
-    body = draft["content"]
-    if len(body) > 600:
-        body = body[:600] + "…(truncated)"
-
-    related = draft.get("related") or []
-    related_section = ""
-    if related:
-        related_lines = [f"\n\n📎 Có {len(related)} entry liên quan cùng scope — review để tránh duplicate:"]
-        for r in related[:5]:
-            related_lines.append(f"  • {r['title'][:80]}")
-        related_section = "\n".join(related_lines)
-
-    preview = (
-        f"📚 Knowledge draft\n"
-        f"{prod_label} | {cat_label}\n"
-        f"📝 {draft['title']}{tags_line}\n\n"
-        f"{body}"
-        f"{related_section}\n\n"
-        f"Duyệt? (sai product → ✏️ Đổi product)"
-    )
-    preview = preview[:MAX_TELEGRAM_MSG]
-    kb = knowledge_confirm_keyboard(draft["draft_id"])
-    try:
-        await update.message.reply_text(preview, reply_markup=kb)
-        logger.info(f"[{user_id}] knowledge preview sent, draft_id={draft['draft_id']}")
-    except Exception as e:
-        logger.error(f"[{user_id}] preview send FAILED: {e}", exc_info=True)
-        # Last resort: plain text + simple inline button
-        try:
-            await update.message.reply_text(
-                f"⚠️ Preview render lỗi nhưng draft đã chuẩn bị.\n"
-                f"Product: {draft.get('product') or 'General'} | Category: {draft['category']}\n"
-                f"Title: {draft['title'][:100]}\n\nBấm để confirm:",
-                reply_markup=kb,
-            )
-        except Exception as e2:
-            logger.error(f"[{user_id}] last-resort send fail: {e2}")
-
-
-async def _handle_move_entry_product_input(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
-) -> None:
-    """User vừa nhập product mới sau khi bấm 📂 Đổi product trong entry detail."""
-    from src.db.repositories import knowledge as knowledge_repo
-    user_id = update.effective_user.id
-    entry_id = context.user_data.pop("awaiting_move_entry_product", None)
-    if entry_id is None:
-        return
-    raw = text.strip()
-    if raw.lower() in ("_general_", "none", "general", "_g_"):
-        new_product = None
-    else:
-        new_product = knowledge_repo.normalize_product(raw)
-    async with AsyncSessionFactory() as session:
-        ok = await knowledge_repo.update_product(session, user_id, entry_id, new_product)
-        if not ok:
-            await update.message.reply_text("❌ Không update được entry.")
-            return
-        entry = await knowledge_repo.get(session, user_id, entry_id)
-    label = f"🎮 {entry.product}" if entry.product else "🌐 General"
-    await update.message.reply_text(
-        f"✅ Đã chuyển entry *{entry.title}* sang {label}.\n"
-        "Gõ /knowledge để xem lại.",
-        parse_mode="Markdown",
-    )
-
-
-async def _handle_new_knowledge_product_input(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
-) -> None:
-    """User vừa nhập product name mới sau khi bấm ✏️ Đổi product."""
-    from src.db.repositories import knowledge as knowledge_repo
-    user_id = update.effective_user.id
-    draft_id = context.user_data.pop("awaiting_knowledge_product", None)
-    raw = text.strip()
-    if raw.lower() in ("_general_", "none", "general", "_g_"):
-        new_product = None  # explicit general
-    else:
-        new_product = knowledge_repo.normalize_product(raw)
-    draft = drafts.update_knowledge_product(user_id, new_product)
-    if not draft or draft["draft_id"] != draft_id:
-        await update.message.reply_text("⚠️ Draft đã hết hạn.")
-        return
-    # Re-render preview
-    await _send_knowledge_confirm(update, draft, "")
 
 
 async def _send_schedule_confirm(update, draft, llm_text):
@@ -476,9 +320,6 @@ async def _handle_menu_shortcut(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="Markdown",
             reply_markup=notes_root_keyboard(),
         )
-    elif text == "📚 Knowledge":
-        from src.bot.commands import knowledge_command
-        await knowledge_command(update, context)
     elif text == "🔑 Key":
         await update.message.reply_text(
             "🔑 Đại hiệp chọn loại key cần nhập:",

@@ -21,7 +21,6 @@ from src.db.models import UserApproval
 from src.ai.quota_tracker import quota_tracker
 from src.db.repositories import notes as notes_repo
 from src.db.repositories import schedules as sched_repo
-from src.db.repositories import knowledge as knowledge_repo
 from src.bot.keyboards import (
     approval_keyboard,
     setkey_keyboard,
@@ -29,7 +28,6 @@ from src.bot.keyboards import (
     schedules_list_keyboard,
     notes_root_keyboard,
     model_picker_keyboard,
-    knowledge_root_keyboard,
     PAGE_SIZE,
 )
 
@@ -107,12 +105,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• \"Nhắc tao 9h sáng mai họp QC\" → tạo lịch\n"
         "• \"Nhắc tao 30 phút trước cuộc họp QC\" → tạo reminder offset\n"
         "• \"Tóm tắt cho tao meeting này: [paste nội dung]\" → meeting minutes\n"
-        "• \"Lưu data JX1 ARPU tháng 4: 45k VNĐ\" → save knowledge (product=JX1, game_data)\n"
-        "• \"Phân tích retention JX2 của tao\" → search knowledge JX2 → phản biện\n"
-        "• 📎 *Attach file (PDF/XLSX/TXT/CSV/MD/JSON)* + caption → tại hạ tự đọc, suy đoán product+category, tạo knowledge draft\n"
-        "• 🖼️ *Gửi ảnh* (screenshot game / chart / design UI) + caption → Gemini Vision đọc → save knowledge\n"
-        "• 🔗 *Paste URL* trong tin nhắn → tại hạ fetch nội dung, đọc và phản hồi (web article, blog, doc public)\n"
-        "• \"Xuất report phân tích retention JX1 Q1\" → tạo file HTML đính kèm, mobile-friendly (work với mọi model, Claude Sonnet chất lượng best nếu có key)\n"
+        "• 📎 *Attach file (PDF/XLSX/TXT/CSV/MD/JSON)* + caption → tại hạ tự đọc và phản hồi\n"
+        "• 🖼️ *Gửi ảnh* (screenshot game / chart / UI) + caption → Gemini Vision mô tả + phân tích\n"
+        "• 🔗 *Paste URL* trong tin nhắn → tại hạ fetch nội dung, đọc và phản hồi\n"
+        "• \"Xuất report phân tích retention JX1 Q1\" → tạo file HTML đính kèm, mobile-friendly\n"
         "• \"Phân tích trade-off của subscription model cho game RPG\" → tư vấn\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "📋 *LỆNH CHÍNH*\n"
@@ -120,7 +116,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/help` — xem hướng dẫn này\n"
         "• `/schedules` — xem lịch sắp tới (có nút xoá)\n"
         "• `/notes` — xem note đã lưu (theo topic / theo ngày)\n"
-        "• `/knowledge` — kho tri thức (data/design/behavior/market...)\n"
         "• `/status` — xem quota free tier còn lại\n\n"
         "🔑 *QUẢN LÝ API KEY & MODEL*\n"
         "• `/setkey` — nhập / đổi key Gemini / Groq / Claude\n"
@@ -129,8 +124,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/model` — chọn model AI (Auto = smart fallback, hoặc pin model cụ thể)\n"
         "• `/cancel` — huỷ flow đang chờ nhập input\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "📱 *MENU GÓC DƯỚI* (bấm thay vì gõ lệnh)\n"
-        "• 📅 Lịch  • 📝 Note  • 📚 Knowledge  • 🔑 Key  • 📊 Status\n\n"
+        "📱 *MENU NHANH* (bấm /start để mở)\n"
+        "• 📅 Lịch  • 📝 Note  • 📋 Meeting  • 🔑 Key  • 📊 Status  • 🧠 Model\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "⏰ *NHẮC NHỞ THÔNG MINH*\n"
         "• Reminder fire đúng giờ kèm 3 nút Snooze: ⏸ 10p / 30p / 1h\n"
@@ -148,8 +143,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• Trước khi tạo note/lịch sẽ có nút ✅ duyệt / ❌ huỷ — review trước khi ghi\n"
         "• Hết quota free Gemini? đợi reset (RPM=1 phút, RPD=24h) hoặc upgrade trả phí\n"
         "• 9-tier fallback model (4 Gemini free + Groq + 2 Gemini Pro + 2 Claude) — `/model` để pin\n"
-        "• Knowledge khác Note: knowledge cho data/design/research lâu dài, note cho idea/todo nhanh\n"
-        "• Knowledge phân theo (product, category) — vd JX1/Game data, JX2/Design — tránh trộn data nhiều game"
+        "• Trước khi tạo note/lịch sẽ có nút ✅ duyệt / ❌ huỷ — review trước khi ghi"
     )
     if is_admin:
         base += (
@@ -220,10 +214,7 @@ async def removekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    for k in (
-        "awaiting_key", "awaiting_email", "awaiting_note_topic",
-        "awaiting_knowledge_product", "awaiting_move_entry_product",
-    ):
+    for k in ("awaiting_key", "awaiting_email", "awaiting_note_topic"):
         context.user_data.pop(k, None)
     await update.message.reply_text("🚫 Đã huỷ flow đang chờ input.")
 
@@ -298,28 +289,6 @@ async def schedules_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"📅 *Lịch sắp tới của đại hiệp* ({len(items)} mục, trang 1/{total_pages})",
         parse_mode="Markdown",
         reply_markup=schedules_list_keyboard(items, 0, total_pages),
-    )
-
-
-async def knowledge_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        products = await knowledge_repo.list_products(session, user_id)
-    if not products:
-        await update.message.reply_text(
-            "📚 Kho tri thức của đại hiệp đang trống.\n\n"
-            "Cứ chat để lưu data/design/insight, vd:\n"
-            "• \"Lưu data JX1 ARPU tháng 4: 45k VNĐ\" (auto product=JX1)\n"
-            "• \"Thêm vào kho design guild JX2\"\n"
-            "• \"Lưu market overview ngành mobile RPG\" (general, no product)"
-        )
-        return
-    total = sum(c for _, c in products)
-    await update.message.reply_text(
-        f"📚 *Kho tri thức* — {total} entries / {len(products)} product\n\n"
-        "Chọn product để xem:",
-        parse_mode="Markdown",
-        reply_markup=knowledge_root_keyboard(products),
     )
 
 

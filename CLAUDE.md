@@ -87,7 +87,7 @@ Khi thêm tool mới: phải mô tả rõ "CHỈ gọi khi..." trong description
 
 ## 5. UX patterns đã chốt
 
-- **Persistent reply-keyboard** ở góc dưới: 📅 Lịch / 📝 Note / 🔑 Key / 📊 Status / 👑 Members (admin only) / /start /help. Build qua `keyboards.persistent_menu(is_admin=...)`.
+- **Compact inline start menu**: `/start` → 2 messages: greeting với `ReplyKeyboardRemove` + inline `start_menu_keyboard()` (7 nút: 📅 Lịch / 📝 Note / 📋 Meeting / 🔑 Key / 📊 Status / 🧠 Model / ❓ Help). Callbacks prefix `sm:`. Không dùng persistent reply-keyboard.
 - **Pagination 5/page** cho lịch + members (`PAGE_SIZE = 5` trong `keyboards.py`).
 - **Confirm flow trước khi ghi DB** cho note + schedule:
   - Tool `save_note` / `create_schedule` chỉ tạo draft trong memory (`drafts.py`).

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.12] - 2026-04-26
+### Removed — Knowledge Base feature
+- Xoá toàn bộ knowledge base feature để nhẹ code:
+  - `KnowledgeEntry` model + `knowledge_entries` table (schema, repo `src/db/repositories/knowledge.py`)
+  - 3 LLM tools: `save_knowledge`, `search_knowledge`, `list_knowledge`
+  - `/knowledge` command + 3-level UI (products → categories → entries)
+  - `weekly_knowledge_digest` cron job (Chủ nhật 9h) + `src/services/knowledge_digest.py`
+  - Draft confirm flow cho knowledge (callbacks `ck:`, `xk:`, `kpe:`, `kc:`, `kpr:`, `klp:`, `kve:`, `kdl:`, `kdc:`, `kme:`)
+  - Tất cả SYSTEM_PROMPT rules liên quan (`## KHO TRI THỨC CÁ NHÂN`)
+  - Fake-save detection block (đặc thù cho knowledge format `**Sản phẩm:**`)
+  - `knowledge_count` trong user_stats + cascade delete
+- Lý do: AI chỉ đọc 5 entries truncated (1500 chars/entry) → không đủ dữ liệu để phân tích thực tế. Phân tích sâu nên thực hiện trên Claude.ai Projects với full context. Feature alert/snapshot tạm hoãn.
+- Inline /start menu: thay `sm:knw` (Knowledge) bằng `sm:mtg` (Meeting) trong `start_menu_keyboard()`
+
 ## [0.9.11] - 2026-04-25
 ### Changed — Compact /start menu
 - **Redesign `/start` cho approved users**: thay 2 messages dài (APPROVED_TEXT + setkey_keyboard + persistent_menu) bằng 1 message ngắn với inline keyboard compact.

@@ -11,7 +11,6 @@ from datetime import timedelta
 from src.services import note_service, schedule_service
 from src.db.repositories import notes as notes_repo, schedules as sched_repo
 from src.db.repositories import user_keys as keys_repo
-from src.db.repositories import knowledge as knowledge_repo
 from src.db.models import MeetingMinute, Schedule
 from src.bot import drafts
 from src.ai.providers import gemini_web_search
@@ -204,121 +203,6 @@ async def dispatch_tool(
                 "id": meeting.id,
                 "title": meeting.title,
                 "action_items_count": len(tool_input.get("action_items", []) or []),
-            }
-
-        elif tool_name == "save_knowledge":
-            # Không insert ngay — tạo draft, chat handler sẽ show confirm keyboard
-            category = knowledge_repo.normalize_category(tool_input.get("category"))
-            product = knowledge_repo.normalize_product(tool_input.get("product"))
-            # Cross-reference: tìm 5 entries gần nhất cùng (product, category) để
-            # user review trước khi save (phát hiện duplicate/conflict thủ công).
-            product_filter = (
-                knowledge_repo.GENERAL_SENTINEL if product is None else product
-            )
-            related_entries = await knowledge_repo.list_filtered(
-                session,
-                user_id=user_id,
-                product=product_filter,
-                category=category,
-                limit=5,
-            )
-            related = [
-                {"id": e.id, "title": e.title}
-                for e in related_entries
-            ]
-            draft_id = drafts.put_knowledge_draft(
-                user_id=user_id,
-                category=category,
-                title=tool_input["title"],
-                content=tool_input["content"],
-                tags=tool_input.get("tags"),
-                product=product,
-                related=related,
-            )
-            return {
-                "ok": True,
-                "draft": True,
-                "draft_id": draft_id,
-                "product": product,
-                "category": category,
-                "title": tool_input["title"],
-                "related_count": len(related),
-                "instruction": (
-                    "ĐÃ CHUẨN BỊ DRAFT (chưa lưu DB). KHÔNG gọi thêm tool. "
-                    "TRẢ LỜI NGẮN GỌN (1-2 câu) theo format chính xác sau, KHÔNG được paraphrase: "
-                    f"'Tại hạ đã chuẩn bị entry knowledge (🎮 {product or 'General'} | {category}). "
-                    "Đại hiệp xem preview bên dưới và bấm ✅ Lưu để confirm.' "
-                    "TUYỆT ĐỐI KHÔNG nói 'đã lưu' / 'đã save' / 'đã ghi vào kho' — chỉ 'đã chuẩn bị'. "
-                    "TUYỆT ĐỐI KHÔNG format response giả vờ là tool result (dạng '**Sản phẩm:** X') — preview sẽ tự render. "
-                    + (
-                        f"Có {len(related)} entry liên quan cùng scope — mention user xem preview tránh duplicate. "
-                        if related else ""
-                    )
-                ),
-            }
-
-        elif tool_name == "search_knowledge":
-            query = tool_input.get("query", "").strip()
-            if not query:
-                return {"ok": False, "error": "Empty query"}
-            entries = await knowledge_repo.search(
-                session,
-                user_id=user_id,
-                query=query,
-                product=tool_input.get("product"),
-                category=tool_input.get("category"),
-                limit=tool_input.get("limit", 5),
-            )
-            return {
-                "ok": True,
-                "count": len(entries),
-                "filter_product": tool_input.get("product"),
-                "filter_category": tool_input.get("category"),
-                "results": [
-                    {
-                        "id": e.id,
-                        "product": e.product,
-                        "category": e.category,
-                        "title": e.title,
-                        "content": e.content[:1500],
-                        "tags": e.tags or [],
-                        "updated_at": e.updated_at.strftime("%d/%m/%Y %H:%M"),
-                    }
-                    for e in entries
-                ],
-                "instruction": (
-                    "Đây là kết quả từ kho tri thức cá nhân của user (đã filter product+category nếu có). "
-                    "Dùng để phân tích / phản biện / trả lời. "
-                    "Nếu count=0 → nói thẳng kho chưa có data, đề nghị user nhập, mention rõ product nếu đã filter."
-                ),
-            }
-
-        elif tool_name == "list_knowledge":
-            entries = await knowledge_repo.list_filtered(
-                session,
-                user_id=user_id,
-                product=tool_input.get("product"),
-                category=tool_input.get("category"),
-                limit=tool_input.get("limit", 10),
-            )
-            products = await knowledge_repo.list_products(session, user_id)
-            return {
-                "ok": True,
-                "count": len(entries),
-                "products_overview": [
-                    {"product": (p or "_general_"), "count": n} for p, n in products
-                ],
-                "results": [
-                    {
-                        "id": e.id,
-                        "product": e.product,
-                        "category": e.category,
-                        "title": e.title,
-                        "tags": e.tags or [],
-                        "updated_at": e.updated_at.strftime("%d/%m/%Y %H:%M"),
-                    }
-                    for e in entries
-                ],
             }
 
         elif tool_name == "export_html_report":

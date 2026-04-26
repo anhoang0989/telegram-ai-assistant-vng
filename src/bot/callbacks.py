@@ -7,7 +7,7 @@ List schedules:     ls / vs / ds
 List notes:         ln / lnt / lnd / vt / vd / dt / dtc / dn
 Approval:           approve / reject
 Setkey:             setkey
-Start menu:         sm:<action>  (sch/nte/knw/key/sta/mdl/hlp)
+Start menu:         sm:<action>  (sch/nte/mtg/key/sta/mdl/hlp)
 """
 import logging
 from telegram import Update
@@ -17,7 +17,6 @@ from src.db.session import AsyncSessionFactory
 from src.db.repositories import approvals as appr_repo
 from src.db.repositories import notes as notes_repo
 from src.db.repositories import schedules as sched_repo
-from src.db.repositories import knowledge as knowledge_repo
 from src.services import note_service, schedule_service
 from src.bot import drafts
 from src.ai.quota_tracker import quota_tracker
@@ -39,16 +38,6 @@ from src.bot.keyboards import (
     member_detail_keyboard,
     confirm_delete_member_keyboard,
     model_picker_keyboard,
-    knowledge_confirm_keyboard,
-    knowledge_root_keyboard,
-    knowledge_categories_for_product_keyboard,
-    knowledge_entries_keyboard,
-    knowledge_entry_detail_keyboard,
-    knowledge_delete_confirm_keyboard,
-    CATEGORY_LABELS,
-    PROD_ALL,
-    PROD_GEN,
-    CAT_ALL,
     PAGE_SIZE,
 )
 
@@ -135,31 +124,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _set_preferred_model(update, context, parts[1] if len(parts) > 1 else "auto")
         elif head == "noop":
             pass  # decorative separator buttons in model picker
-        elif head == "ck":
-            await _confirm_knowledge(update, context, parts[1])
-        elif head == "xk":
-            await _cancel_knowledge_draft(update, context, parts[1])
-        elif head == "kpe":
-            await _edit_knowledge_product(update, context, parts[1])
-        elif head == "kc":
-            await _knowledge_root(update, context)
-        elif head == "kpr":
-            await _knowledge_view_product(update, context, parts[1])
-        elif head == "klp":
-            # data: "klp:<prod>:<cat>:<page>"
-            full = data.split(":", 3)
-            prod_token = full[1] if len(full) > 1 else PROD_ALL
-            cat = full[2] if len(full) > 2 else CAT_ALL
-            page = int(full[3]) if len(full) > 3 else 0
-            await _knowledge_list(update, context, prod_token, cat, page)
-        elif head == "kve":
-            await _knowledge_view_entry(update, context, int(parts[1]))
-        elif head == "kdl":
-            await _knowledge_confirm_delete(update, context, int(parts[1]))
-        elif head == "kdc":
-            await _knowledge_delete(update, context, int(parts[1]))
-        elif head == "kme":
-            await _move_entry_product(update, context, int(parts[1]))
         elif head == "sm":
             await _start_menu_action(update, context, parts[1] if len(parts) > 1 else "")
         else:
@@ -659,205 +623,6 @@ def _allowed_models() -> set[str]:
     }
 
 
-# ============ KNOWLEDGE BASE ============
-
-def _resolve_prod_token(token: str) -> tuple[str, str | None, str | None]:
-    """Resolve callback prod token → (display_label, repo_filter, real_product_name).
-    repo_filter: None=all, '_general_'=NULL, or actual product name.
-    real_product_name: None for sentinels, else product string.
-    """
-    if token == PROD_ALL:
-        return ("📚 Tất cả product", None, None)
-    if token == PROD_GEN:
-        return ("🌐 General", knowledge_repo.GENERAL_SENTINEL, None)
-    real = drafts.resolve_product_hash(token)
-    if real is None:
-        return (f"⚠️ Unknown product", None, None)
-    return (f"🎮 {real}", real, real)
-
-
-def _entry_prod_token(entry) -> str:
-    """Build prod_token để navigate back từ entry detail."""
-    if entry.product is None:
-        return PROD_GEN
-    return drafts.hash_product(entry.product)
-
-
-async def _confirm_knowledge(update: Update, context: ContextTypes.DEFAULT_TYPE, draft_id: str) -> None:
-    user_id = update.effective_user.id
-    draft = drafts.get_knowledge_draft(user_id)
-    if not draft or draft["draft_id"] != draft_id:
-        await update.callback_query.edit_message_text("⚠️ Draft đã hết hạn.")
-        return
-    async with AsyncSessionFactory() as session:
-        entry = await knowledge_repo.create(
-            session,
-            user_id=user_id,
-            product=draft.get("product"),
-            category=draft["category"],
-            title=draft["title"],
-            content=draft["content"],
-            tags=draft.get("tags"),
-        )
-    drafts.pop_knowledge_draft(user_id)
-    cat_label = CATEGORY_LABELS.get(entry.category, entry.category)
-    prod_label = f"🎮 {entry.product}" if entry.product else "🌐 General"
-    await update.callback_query.edit_message_text(
-        f"✅ Đã lưu vào kho:\n{prod_label} | {cat_label}\n📝 {entry.title}"
-    )
-
-
-async def _cancel_knowledge_draft(update: Update, context: ContextTypes.DEFAULT_TYPE, draft_id: str) -> None:
-    user_id = update.effective_user.id
-    drafts.pop_knowledge_draft(user_id)
-    context.user_data.pop("awaiting_knowledge_product", None)
-    await update.callback_query.edit_message_text("🚫 Đã hủy draft knowledge.")
-
-
-async def _edit_knowledge_product(update: Update, context: ContextTypes.DEFAULT_TYPE, draft_id: str) -> None:
-    user_id = update.effective_user.id
-    draft = drafts.get_knowledge_draft(user_id)
-    if not draft or draft["draft_id"] != draft_id:
-        await update.callback_query.edit_message_text("⚠️ Draft đã hết hạn.")
-        return
-    context.user_data["awaiting_knowledge_product"] = draft_id
-    cur = draft.get("product") or "(General/none)"
-    await update.callback_query.edit_message_text(
-        f"✏️ Product hiện tại: *{cur}*\n\n"
-        "Gõ tên product mới (vd: `JX1`, `JX2`, `VLTKM`).\n"
-        "Gõ `_general_` hoặc `none` nếu data chung không gắn product.\n"
-        "Gõ /cancel để huỷ.",
-        parse_mode="Markdown",
-    )
-
-
-async def _knowledge_root(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        products = await knowledge_repo.list_products(session, user_id)
-    if not products:
-        await update.callback_query.edit_message_text("📚 Kho tri thức đang trống.")
-        return
-    total = sum(c for _, c in products)
-    await _safe_edit(
-        update.callback_query,
-        f"📚 *Kho tri thức* — {total} entries / {len(products)} product\n\nChọn product:",
-        reply_markup=knowledge_root_keyboard(products),
-    )
-
-
-async def _knowledge_view_product(update: Update, context: ContextTypes.DEFAULT_TYPE, prod_token: str) -> None:
-    user_id = update.effective_user.id
-    label, repo_filter, _real = _resolve_prod_token(prod_token)
-    async with AsyncSessionFactory() as session:
-        cats = await knowledge_repo.list_categories_for_product(
-            session, user_id, product=repo_filter,
-        )
-    if not cats:
-        await update.callback_query.edit_message_text(f"{label}: trống.")
-        return
-    total = sum(c for _, c in cats)
-    await _safe_edit(
-        update.callback_query,
-        f"{label} — {total} entries trong {len(cats)} category\n\nChọn category:",
-        reply_markup=knowledge_categories_for_product_keyboard(prod_token, cats),
-    )
-
-
-async def _knowledge_list(
-    update: Update, context: ContextTypes.DEFAULT_TYPE,
-    prod_token: str, cat: str, page: int,
-) -> None:
-    user_id = update.effective_user.id
-    prod_label, repo_prod, _ = _resolve_prod_token(prod_token)
-    cat_filter = None if cat == CAT_ALL else cat
-    async with AsyncSessionFactory() as session:
-        entries = await knowledge_repo.list_filtered(
-            session, user_id=user_id, product=repo_prod, category=cat_filter, limit=200,
-        )
-    if not entries:
-        await update.callback_query.edit_message_text(f"{prod_label}: category này trống.")
-        return
-    total_pages = (len(entries) + PAGE_SIZE - 1) // PAGE_SIZE
-    page = max(0, min(page, total_pages - 1))
-    cat_label = CATEGORY_LABELS.get(cat, "📚 Tất cả category") if cat != CAT_ALL else "📚 Tất cả category"
-    await _safe_edit(
-        update.callback_query,
-        f"{prod_label} / {cat_label} — {len(entries)} entries (trang {page + 1}/{total_pages})",
-        reply_markup=knowledge_entries_keyboard(entries, prod_token, cat, page, total_pages),
-    )
-
-
-async def _knowledge_view_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, entry_id: int) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        entry = await knowledge_repo.get(session, user_id, entry_id)
-    if not entry:
-        await update.callback_query.edit_message_text("❌ Entry không tồn tại.")
-        return
-    cat_label = CATEGORY_LABELS.get(entry.category, entry.category)
-    prod_label = f"🎮 {entry.product}" if entry.product else "🌐 General"
-    tags_line = (" 🏷️ " + ", ".join(entry.tags)) if entry.tags else ""
-    body = entry.content[:1500]
-    if len(entry.content) > 1500:
-        body += "\n…(truncated)"
-    text = (
-        f"{prod_label} | {cat_label}\n📝 *{entry.title}*{tags_line}\n"
-        f"🕐 {entry.updated_at.strftime('%d/%m/%Y %H:%M')}\n\n"
-        f"{body}"
-    )
-    prod_token = _entry_prod_token(entry)
-    await _safe_edit(
-        update.callback_query,
-        text,
-        reply_markup=knowledge_entry_detail_keyboard(entry.id, prod_token, entry.category),
-    )
-
-
-async def _knowledge_confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE, entry_id: int) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        entry = await knowledge_repo.get(session, user_id, entry_id)
-    if not entry:
-        await update.callback_query.edit_message_text("❌ Entry không tồn tại.")
-        return
-    prod_token = _entry_prod_token(entry)
-    await _safe_edit(
-        update.callback_query,
-        f"⚠️ Xoá entry *{entry.title}*?",
-        reply_markup=knowledge_delete_confirm_keyboard(entry.id, prod_token, entry.category),
-    )
-
-
-async def _knowledge_delete(update: Update, context: ContextTypes.DEFAULT_TYPE, entry_id: int) -> None:
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        ok = await knowledge_repo.delete(session, user_id, entry_id)
-    if ok:
-        await update.callback_query.edit_message_text("🗑️ Đã xoá entry.")
-    else:
-        await update.callback_query.edit_message_text("❌ Không xoá được.")
-
-
-async def _move_entry_product(update: Update, context: ContextTypes.DEFAULT_TYPE, entry_id: int) -> None:
-    """Cho user đổi product của entry sau khi đã lưu (vd entries v0.9.0 chưa có product)."""
-    user_id = update.effective_user.id
-    async with AsyncSessionFactory() as session:
-        entry = await knowledge_repo.get(session, user_id, entry_id)
-    if not entry:
-        await update.callback_query.edit_message_text("❌ Entry không tồn tại.")
-        return
-    context.user_data["awaiting_move_entry_product"] = entry_id
-    cur = entry.product or "(General/none)"
-    await update.callback_query.edit_message_text(
-        f"📂 Entry hiện ở product: *{cur}*\n📝 {entry.title}\n\n"
-        "Gõ tên product mới (vd: `JX1`, `JX2`).\n"
-        "Gõ `_general_` hoặc `none` để chuyển sang General.\n"
-        "Gõ /cancel để huỷ.",
-        parse_mode="Markdown",
-    )
-
-
 async def _set_preferred_model(update: Update, context: ContextTypes.DEFAULT_TYPE, model: str) -> None:
     user_id = update.effective_user.id
     if model not in _allowed_models():
@@ -900,21 +665,24 @@ async def _start_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE,
             reply_markup=notes_root_keyboard(),
         )
 
-    elif action == "knw":
+    elif action == "mtg":
+        from sqlalchemy import select as _select
+        from src.db.models import MeetingMinute
         async with AsyncSessionFactory() as session:
-            products = await knowledge_repo.list_products(session, user_id)
-        if not products:
-            await query.message.reply_text(
-                "📚 Kho tri thức đang trống.\n"
-                "Chat để thêm data/design/insight, vd: \"Lưu data JX1 ARPU tháng 4: 45k\"."
+            result = await session.execute(
+                _select(MeetingMinute)
+                .where(MeetingMinute.user_id == user_id)
+                .order_by(MeetingMinute.created_at.desc())
+                .limit(10)
             )
+            meetings = list(result.scalars().all())
+        if not meetings:
+            await query.message.reply_text("📋 Đại hiệp chưa có meeting nào được lưu.")
             return
-        total = sum(c for _, c in products)
-        await query.message.reply_text(
-            f"📚 *Kho tri thức* — {total} entries / {len(products)} product\n\nChọn product:",
-            parse_mode="Markdown",
-            reply_markup=knowledge_root_keyboard(products),
-        )
+        lines = [f"📋 *Meeting đã lưu ({len(meetings)}):*\n"]
+        for m in meetings:
+            lines.append(f"• {m.created_at.strftime('%d/%m/%Y')} — {m.title}")
+        await query.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     elif action == "key":
         await query.message.reply_text(

@@ -7,11 +7,9 @@ from apscheduler.triggers.cron import CronTrigger
 from src.config import settings
 from src.db.session import AsyncSessionFactory
 from src.db.repositories import schedules as repo
-from src.db.repositories import knowledge as knowledge_repo
 from src.db.repositories import user_keys as keys_repo
 from src.db.models import UserApproval, Schedule
 from src.services.schedule_service import format_reminder, TZ
-from src.services.knowledge_digest import generate_digest
 from src.bot.keyboards import snooze_keyboard
 
 logger = logging.getLogger(__name__)
@@ -45,15 +43,8 @@ def init_scheduler(bot) -> AsyncIOScheduler:
         id="daily_digest",
         replace_existing=True,
     )
-    # Weekly knowledge digest — Chủ nhật 9:00 sáng giờ VN (day_of_week=0=Mon, 6=Sun)
-    _scheduler.add_job(
-        weekly_knowledge_digest,
-        CronTrigger(day_of_week="sun", hour=9, minute=0, timezone=settings.scheduler_timezone),
-        id="weekly_knowledge_digest",
-        replace_existing=True,
-    )
     _scheduler.start()
-    logger.info("Scheduler started (reminders + daily digest 8:00 + weekly knowledge digest sun 9:00).")
+    logger.info("Scheduler started (reminders + daily digest 8:00).")
     return _scheduler
 
 
