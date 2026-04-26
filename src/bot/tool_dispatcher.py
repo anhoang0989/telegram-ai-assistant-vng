@@ -244,10 +244,16 @@ async def dispatch_tool(
                 "title": tool_input["title"],
                 "related_count": len(related),
                 "instruction": (
-                    "Đã chuẩn bị knowledge draft. KHÔNG gọi thêm tool. "
-                    "Báo user biết tại hạ đã chuẩn bị entry kèm product+category. "
-                    "Nếu có related_count > 0 → mention với user 'có N entry liên quan trong cùng product+category, đại hiệp xem preview để tránh duplicate'. "
-                    "User duyệt qua nút bên dưới (có nút đổi product nếu sai)."
+                    "ĐÃ CHUẨN BỊ DRAFT (chưa lưu DB). KHÔNG gọi thêm tool. "
+                    "TRẢ LỜI NGẮN GỌN (1-2 câu) theo format chính xác sau, KHÔNG được paraphrase: "
+                    f"'Tại hạ đã chuẩn bị entry knowledge (🎮 {product or 'General'} | {category}). "
+                    "Đại hiệp xem preview bên dưới và bấm ✅ Lưu để confirm.' "
+                    "TUYỆT ĐỐI KHÔNG nói 'đã lưu' / 'đã save' / 'đã ghi vào kho' — chỉ 'đã chuẩn bị'. "
+                    "TUYỆT ĐỐI KHÔNG format response giả vờ là tool result (dạng '**Sản phẩm:** X') — preview sẽ tự render. "
+                    + (
+                        f"Có {len(related)} entry liên quan cùng scope — mention user xem preview tránh duplicate. "
+                        if related else ""
+                    )
                 ),
             }
 

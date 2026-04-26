@@ -5,7 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
-## [0.9.8] - 2026-04-26
+## [0.9.9] - 2026-04-26
+### Fixed — Product name auto-correct + AI fake "đã lưu" hallucination
+- **Bug #1 (JX20 → JX2)**: User gõ "JX20" trong yêu cầu lưu → bot tự suy
+  luận thành "JX2" (vì training thấy JX2 phổ biến hơn). Hậu quả: data
+  lưu sai sản phẩm, mix data giữa JX2 và JX20.
+  Fix: SYSTEM_PROMPT thêm "🚨 QUY TẮC VERBATIM" — tên product giữ nguyên
+  vẹn, KHÔNG suy luận, KHÔNG correct typo. JX20 ≠ JX2, JX1.5 ≠ JX1.
+  Mơ hồ → hỏi lại user. Tool description nhấn cùng quy tắc.
+- **Bug #2 (lần 2 không có button)**: AI tự viết text "Tại hạ đã lưu...
+  **Sản phẩm:** X / **Danh mục:** Y" trông giống tool result nhưng
+  KHÔNG thực sự gọi `save_knowledge` → không có draft → không có button
+  ✅/❌ → user tưởng đã lưu mà thực ra chưa.
+  Fix:
+  - SYSTEM_PROMPT + tool description: TUYỆT ĐỐI KHÔNG được nói "đã lưu",
+    chỉ "đã chuẩn bị draft, đại hiệp duyệt nút bên dưới"
+  - Tool dispatcher instruction force LLM theo format chính xác, không
+    được tự format giả vờ là tool result
+  - **Defensive check trong chat handler**: nếu LLM response chứa "đã
+    lưu" / "đã save" / "đã ghi vào kho" mà KHÔNG có know_draft hoặc
+    note_draft → log warning + replace response bằng cảnh báo cho user
+    re-try → user không bị lừa nữa
 ### Fixed — web_search gating: đảo ngược logic từ "whitelist" → "fallback mặc định"
 - **Bug v0.9.7 chưa fix triệt để**: dù v0.9.7 đã add thêm thời tiết/giao
   thông/lịch chiếu vào whitelist, các category KHÔNG có trong list (vd

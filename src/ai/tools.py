@@ -175,11 +175,14 @@ TOOLS = [
             "Lưu MỘT entry vào kho tri thức cá nhân của đại hiệp — KHÁC với save_note. "
             "Knowledge dành cho data/design/research/behavior insight cần dùng để PHÂN TÍCH sau này; "
             "note dành cho ghi chú nhanh / idea tản mát. "
+            "🚨 TOOL NÀY BẮT BUỘC PHẢI GỌI khi user yêu cầu lưu — KHÔNG ĐƯỢC tự viết text 'đã lưu' giả vờ. "
+            "Tool tạo DRAFT trong memory, user phải bấm nút ✅ confirm mới ghi DB. "
             "CHỈ gọi khi user nói RÕ RÀNG: 'lưu data', 'save knowledge', 'thêm vào kho', 'lưu design', "
             "'ghi nhận insight này', 'add vào knowledge', hoặc paste 1 đoạn dài (>200 chars) về số liệu/design/research kèm yêu cầu lưu. "
             "TUYỆT ĐỐI KHÔNG gọi cho: chat thường, hỏi tin tức, tóm tắt nhanh, idea ngắn (→ dùng save_note). "
-            "VÍ DỤ NÊN GỌI: 'lưu data JX1 ARPU tháng 4: 45k VNĐ' (product=JX1), 'thêm vào kho design hệ thống guild JX2' (product=JX2). "
-            "VÍ DỤ KHÔNG GỌI: 'ghi lại idea LiveOps Tết' (→ note), 'phân tích retention Z' (→ search_knowledge trước, không save)."
+            "VÍ DỤ NÊN GỌI: 'lưu data JX1 ARPU tháng 4: 45k VNĐ' (product='JX1'), 'thêm vào kho design hệ thống guild JX20' (product='JX20', KHÔNG được sửa thành JX2). "
+            "VÍ DỤ KHÔNG GỌI: 'ghi lại idea LiveOps Tết' (→ note), 'phân tích retention Z' (→ search_knowledge trước, không save). "
+            "PRODUCT VERBATIM: tên product giữ NGUYÊN VẸN (JX20 ≠ JX2, JX1.5 ≠ JX1). KHÔNG auto-correct."
         ),
         "input_schema": {
             "type": "object",

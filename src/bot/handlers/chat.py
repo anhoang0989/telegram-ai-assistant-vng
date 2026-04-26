@@ -180,6 +180,25 @@ async def run_llm_turn(
         know_draft = drafts.get_knowledge_draft(user_id)
         pending_report = drafts.get_report(user_id)
 
+        # Defensive: detect AI hallucinated "đã lưu" without actually calling save tool
+        _fake_save_phrases = (
+            "đã lưu thông tin", "đã lưu data", "đã lưu vào kho",
+            "đã save", "đã ghi vào kho", "đã thêm vào kho",
+        )
+        rt_lower = (response_text or "").lower()
+        if any(p in rt_lower for p in _fake_save_phrases):
+            if not (know_draft or note_draft):
+                logger.warning(
+                    f"[{user_id}] HALLUCINATION: AI nói 'đã lưu' nhưng KHÔNG tool call. "
+                    f"Response head: {response_text[:200]!r}"
+                )
+                response_text = (
+                    "⚠️ Tại hạ vừa định trả lời sai (nói 'đã lưu' mà chưa thực sự lưu). "
+                    "Đại hiệp gõ lại yêu cầu — vd: 'lưu lại data này vào knowledge' — "
+                    "tại hạ sẽ tạo draft đúng cách kèm nút duyệt.\n\n"
+                    "(Response gốc của tại hạ — đã invalidate):\n\n" + (response_text or "")[:1500]
+                )
+
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
             return
