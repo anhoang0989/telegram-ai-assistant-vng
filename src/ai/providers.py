@@ -154,11 +154,12 @@ async def call_gemini(
     model: str,
     messages: list[dict],
     tools: list[dict],
+    system_override: str | None = None,
 ) -> tuple[str, list[dict] | None]:
     client = _get_gemini_client(api_key)
     contents = _messages_to_gemini_contents(messages)
     config = gtypes.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
+        system_instruction=system_override or SYSTEM_PROMPT,
         tools=_to_gemini_tools(tools) if tools else None,
         temperature=0.7,
     )
@@ -183,8 +184,8 @@ async def call_gemini(
 
 # ========== GROQ ==========
 
-def _messages_to_groq_format(messages: list[dict]) -> list[dict]:
-    out = [{"role": "system", "content": SYSTEM_PROMPT}]
+def _messages_to_groq_format(messages: list[dict], system_override: str | None = None) -> list[dict]:
+    out = [{"role": "system", "content": system_override or SYSTEM_PROMPT}]
     for msg in messages:
         role = msg["role"]
         if role == "user":
@@ -215,9 +216,10 @@ async def call_groq(
     model: str,
     messages: list[dict],
     tools: list[dict],
+    system_override: str | None = None,
 ) -> tuple[str, list[dict] | None]:
     client = _get_groq_client(api_key)
-    groq_messages = _messages_to_groq_format(messages)
+    groq_messages = _messages_to_groq_format(messages, system_override=system_override)
     groq_tools = _to_groq_tools(tools) if tools else None
 
     try:
@@ -315,6 +317,7 @@ async def call_claude(
     model: str,
     messages: list[dict],
     tools: list[dict],
+    system_override: str | None = None,
 ) -> tuple[str, list[dict] | None]:
     client = _get_claude_client(api_key)
     claude_messages = _messages_to_claude_format(messages)
@@ -323,7 +326,7 @@ async def call_claude(
     kwargs = {
         "model": model,
         "max_tokens": 2048,
-        "system": SYSTEM_PROMPT,
+        "system": system_override or SYSTEM_PROMPT,
         "messages": claude_messages,
         "temperature": 0.7,
     }

@@ -16,13 +16,14 @@ from src.config import settings
 from src.ai.classifier import classify, COMPLEXITY_START
 from src.ai.quota_tracker import quota_tracker
 from src.ai.providers import call_gemini, call_groq, call_claude
+from src.ai.prompts import build_system_prompt
 from src.ai.tools import TOOLS
 from src.bot.tool_dispatcher import dispatch_tool
 
 logger = logging.getLogger(__name__)
 
 MAX_INPUT_CHARS = 8000
-MAX_HISTORY_TURNS = 20
+MAX_HISTORY_TURNS = 10  # giảm từ 20 (v0.9.4) — giảm token, tăng tốc 30-50%
 MAX_AGENTIC_STEPS = 5
 
 TIERS = [
@@ -42,14 +43,15 @@ async def _call_tier(
     tier: dict,
     messages: list[dict],
     keys: dict[str, str | None],
+    system_prompt: str | None = None,
 ) -> tuple[str, list[dict] | None]:
     provider = tier["provider"]
     if provider == "gemini":
-        return await call_gemini(keys["gemini"], tier["model"], messages, TOOLS)
+        return await call_gemini(keys["gemini"], tier["model"], messages, TOOLS, system_override=system_prompt)
     if provider == "groq":
-        return await call_groq(keys["groq"], tier["model"], messages, TOOLS)
+        return await call_groq(keys["groq"], tier["model"], messages, TOOLS, system_override=system_prompt)
     if provider == "claude":
-        return await call_claude(keys["claude"], tier["model"], messages, TOOLS)
+        return await call_claude(keys["claude"], tier["model"], messages, TOOLS, system_override=system_prompt)
     raise ValueError(f"Unknown provider: {provider}")
 
 
@@ -58,6 +60,7 @@ async def _call_with_fallback(
     messages: list[dict],
     start_tier: int,
     keys: dict[str, str | None],
+    system_prompt: str | None = None,
 ) -> tuple[str, list[dict] | None, str]:
     for i in range(start_tier, len(TIERS)):
         tier = TIERS[i]
@@ -74,7 +77,7 @@ async def _call_with_fallback(
             continue
 
         try:
-            text, tool_calls = await _call_tier(tier, messages, keys)
+            text, tool_calls = await _call_tier(tier, messages, keys, system_prompt)
             # Record AFTER success — call fail không nên tốn quota counter local
             quota_tracker.record(user_id, model)
             return text, tool_calls, model
@@ -108,6 +111,7 @@ async def _call_pinned(
     messages: list[dict],
     model_id: str,
     keys: dict[str, str | None],
+    system_prompt: str | None = None,
 ) -> tuple[str, list[dict] | None, str]:
     """User đã pin 1 model cụ thể qua /model — KHÔNG fallback sang tier khác.
     Quota hết hoặc thiếu key → báo lỗi rõ ràng để user tự xử lý.
@@ -136,7 +140,7 @@ async def _call_pinned(
         )
 
     try:
-        text, tool_calls = await _call_tier(tier, messages, keys)
+        text, tool_calls = await _call_tier(tier, messages, keys, system_prompt=system_prompt)
         quota_tracker.record(user_id, model_id)
         return text, tool_calls, model_id
     except Exception as e:
@@ -176,6 +180,11 @@ async def chat(
     complexity = classify(user_message)
     start_tier = COMPLEXITY_START[complexity]
     pinned = preferred_model and preferred_model != "auto"
+
+    # v0.9.4: build dynamic system prompt với current VN time
+    # → fix bug LLM tính sai "2 tiếng nữa", "mai", "thứ 6 tuần sau"
+    system_prompt = build_system_prompt()
+
     logger.info(
         f"[{user_id}] complexity={complexity} start_tier={start_tier} "
         f"msg_len={len(user_message)} pinned={preferred_model if pinned else 'no'}"
@@ -192,11 +201,11 @@ async def chat(
     for step in range(MAX_AGENTIC_STEPS):
         if pinned:
             text, tool_calls, model = await _call_pinned(
-                user_id, messages, preferred_model, keys,
+                user_id, messages, preferred_model, keys, system_prompt=system_prompt,
             )
         else:
             text, tool_calls, model = await _call_with_fallback(
-                user_id, messages, start_tier, keys,
+                user_id, messages, start_tier, keys, system_prompt=system_prompt,
             )
         last_model = model
 

@@ -6,6 +6,7 @@ Text handler — paths:
   4. persistent menu shortcuts (📅 Lịch, 📝 Note, 🔑 Key, 📊 Status)
   5. default                 → chat LLM. Nếu LLM tạo draft → show pick-topic / confirm keyboard.
 """
+import asyncio
 import logging
 import re
 from telegram import Update
@@ -37,6 +38,21 @@ logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_MSG = 4000
 DOMAIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,19}$")
+TYPING_REFRESH_SEC = 4.0  # Telegram giữ "typing..." ~5s, refresh mỗi 4s
+
+
+async def _typing_loop(chat, stop_event: asyncio.Event) -> None:
+    """Gửi send_action('typing') liên tục đến khi stop_event được set.
+    Để user biết bot đang xử lý, không tưởng bot chết."""
+    while not stop_event.is_set():
+        try:
+            await chat.send_action("typing")
+        except Exception:
+            pass  # network blip, ignore — sẽ retry vòng sau
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=TYPING_REFRESH_SEC)
+        except asyncio.TimeoutError:
+            continue
 
 # Persistent menu shortcuts → command-like behavior
 MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "📚 Knowledge", "🔑 Key", "📊 Status", "👑 Members"}
@@ -89,14 +105,16 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
 
-        await update.message.chat.send_action("typing")
-
         history_records = await conv_repo.get_recent(session, user_id)
         history = [{"role": r.role, "content": r.content} for r in history_records]
 
         preferred = await appr_repo.get_preferred_model(session, user_id)
 
         await conv_repo.save(session, user_id, "user", text)
+
+        # v0.9.4: persistent typing indicator — refresh mỗi 4s đến khi LLM xong
+        stop_typing = asyncio.Event()
+        typing_task = asyncio.create_task(_typing_loop(update.message.chat, stop_typing))
 
         try:
             response_text, model_used = await chat(
@@ -108,6 +126,12 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.error(f"chat() error: {e}", exc_info=True)
             response_text = f"⚠️ Tại hạ gặp lỗi khi xử lý: {e}"
             model_used = "error"
+        finally:
+            stop_typing.set()
+            try:
+                await asyncio.wait_for(typing_task, timeout=1.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                typing_task.cancel()
 
         logger.info(f"[{user_id}] Served by: {model_used}")
         await conv_repo.save(session, user_id, "assistant", response_text)

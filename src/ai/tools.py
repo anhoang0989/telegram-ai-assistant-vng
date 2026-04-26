@@ -82,7 +82,8 @@ TOOLS = [
         "description": (
             "Tạo lịch/nhắc nhở. CHỈ gọi khi user nói RÕ RÀNG: 'nhắc tao...', 'đặt lịch...', "
             "'hẹn...', 'reminder...', 'set lịch...'. KHÔNG tự đoán từ chat thông thường. "
-            "Parse ngôn ngữ tự nhiên để xác định thời gian (vd: '3h chiều mai', 'thứ 6 tuần sau 9h')."
+            "BẮT BUỘC tham khảo BỐI CẢNH THỜI GIAN ở đầu system prompt để tính 'mai', '2 tiếng nữa', "
+            "'thứ 6 tuần sau' chính xác — KHÔNG được tự đoán giờ."
         ),
         "input_schema": {
             "type": "object",
@@ -91,7 +92,12 @@ TOOLS = [
                 "description": {"type": "string", "description": "Mô tả thêm (không bắt buộc)"},
                 "scheduled_at": {
                     "type": "string",
-                    "description": "Thời gian ISO 8601, timezone Asia/Ho_Chi_Minh (vd: 2026-04-25T15:00:00+07:00)",
+                    "description": (
+                        "ISO 8601 BẮT BUỘC kèm `+07:00` (timezone Asia/Ho_Chi_Minh). "
+                        "Vd: `2026-04-26T17:30:00+07:00`. "
+                        "Tính từ thời điểm hiện tại VN ở system prompt — vd 'now=15:30, +2h' → '17:30'. "
+                        "TUYỆT ĐỐI không trả UTC hoặc thiếu timezone offset."
+                    ),
                 },
                 "recurrence": {
                     "type": "string",

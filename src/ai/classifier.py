@@ -28,8 +28,10 @@ def classify(text: str) -> str:
 
 
 # Maps complexity → starting tier index (0-based into TIER list).
-# - simple → tier 0 (gemini-3-flash-lite, 500 RPD, default workhorse)
-# - medium → tier 2 (gemini-3-flash, reasoning Gen3) — fallback xuống flash-lite nếu hết quota
-# - complex → tier 2 (gemini-3-flash) — Pro chỉ reach được qua fallback nếu key trả phí
-# Không dùng start=Pro vì free tier = 0, sẽ luôn fail call đầu tiên.
-COMPLEXITY_START = {"simple": 0, "medium": 2, "complex": 2}
+# v0.9.4 tuning: ưu tiên TỐC ĐỘ — flash-lite Gen 3.1 (tier 0) đủ tốt cho cả
+# simple + medium (15 RPM / 500 RPD), latency ~1-2s. Chỉ complex mới start
+# tier 2 (gemini-3-flash, có reasoning) chấp nhận chậm hơn để tốt hơn.
+# - simple  → tier 0 (flash-lite, fastest)
+# - medium  → tier 0 (flash-lite vẫn đủ tốt — Gen 3.1 mạnh hơn 2.5)
+# - complex → tier 2 (flash, reasoning Gen 3) — fallback Pro qua key paid
+COMPLEXITY_START = {"simple": 0, "medium": 0, "complex": 2}

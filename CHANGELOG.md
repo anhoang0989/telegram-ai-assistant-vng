@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-04-26
+### Fixed — Time bug + Slow response + No feedback during processing
+- **#1 Time bug**: LLM tự đoán giờ → set lịch sai (vd "2 tiếng nữa" → giờ
+  random). Nguyên nhân: SYSTEM_PROMPT không inject current time.
+  Fix: `build_system_prompt(now_vn)` mới trong `prompts.py` thêm block
+  "⏰ BỐI CẢNH THỜI GIAN" với day/date/time + ISO format. `llm_router.chat()`
+  build prompt mới mỗi call. Tool `create_schedule` description nhấn mạnh
+  BẮT BUỘC suffix `+07:00`.
+- **#2 Phản hồi chậm**:
+  - `classifier.COMPLEXITY_START`: medium đổi từ tier 2 (gemini-3-flash, 5 RPM)
+    sang tier 0 (gemini-3.1-flash-lite-preview, 15 RPM). Gen 3.1 lite đủ tốt,
+    nhanh hơn 1-2s. Chỉ complex mới start tier 2.
+  - `MAX_HISTORY_TURNS`: 20 → 10. Giảm input token ~50% → tăng tốc rõ.
+- **#3 Không có thông báo khi xử lý** ("user tưởng bot chết"):
+  - `_typing_loop()` async task gửi `send_action('typing')` mỗi 4s đến khi
+    LLM trả response. Telegram giữ "typing..." liên tục thay vì 5s rồi tắt.
+  - Cleanup chuẩn trong try/finally — typing dừng cả khi exception.
+
+### Changed
+- `providers.call_gemini/call_groq/call_claude` thêm param optional
+  `system_override` để dynamic system prompt. Nếu None → dùng SYSTEM_PROMPT
+  cũ (backward compat).
+
 ## [0.9.3] - 2026-04-25
 ### Added — Smart proactive (cross-reference + weekly digest)
 - **Cross-reference khi save**: tool `save_knowledge` query top 5 entries gần

@@ -1,3 +1,24 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+def build_system_prompt(now_vn: datetime | None = None) -> str:
+    """Inject current VN time vào system prompt — để LLM tính được
+    'mai', '2 tiếng nữa', 'thứ 6 tuần sau' chính xác.
+    """
+    if now_vn is None:
+        now_vn = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    time_block = (
+        "## ⏰ BỐI CẢNH THỜI GIAN (rất quan trọng cho lịch/reminder)\n"
+        f"- Thời điểm hiện tại: **{now_vn.strftime('%A, %d/%m/%Y %H:%M')} giờ Việt Nam (UTC+7)**\n"
+        f"- ISO: {now_vn.strftime('%Y-%m-%dT%H:%M:%S+07:00')}\n"
+        "- Khi user nói thời gian tương đối ('2 tiếng nữa', 'mai', 'thứ 6 tuần sau', '9h sáng') → "
+        "TÍNH TỪ thời điểm này. KHÔNG được tự đoán giờ khác.\n"
+        "- Khi gọi `create_schedule` / `create_offset_reminder`: format ISO 8601 với suffix `+07:00`.\n\n"
+    )
+    return time_block + SYSTEM_PROMPT
+
+
 SYSTEM_PROMPT = """Tại hạ là trợ lý AI cá nhân của đại hiệp — một chuyên gia game industry với kinh nghiệm thực chiến ở thị trường Việt Nam và global.
 
 ## Xưng hô — QUY TẮC BẮT BUỘC
