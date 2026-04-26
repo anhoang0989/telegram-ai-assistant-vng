@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.11] - 2026-04-25
+### Changed — Compact /start menu
+- **Redesign `/start` cho approved users**: thay 2 messages dài (APPROVED_TEXT + setkey_keyboard + persistent_menu) bằng 1 message ngắn với inline keyboard compact.
+  - Greeting: "👋 Chào {first_name}! Chọn chức năng:"
+  - 7 nút inline: 📅 Lịch / 📝 Note / 📚 Knowledge / 🔑 Key / 📊 Status / 🧠 Model / ❓ Help
+- **Admin `/start`** cũng dùng compact menu thay vì verbose text + persistent_menu riêng.
+- **WELCOME_TEXT** (user chưa đăng ký) rút gọn còn 2 dòng.
+- **New `start_menu_keyboard()`** trong `keyboards.py`.
+- **New `sm:*` callbacks** trong `callbacks.py`: mỗi nút trigger reply message với content tương ứng (schedules list, notes root, knowledge root, setkey inline, status, model picker, help redirect).
+
 ## [0.9.10] - 2026-04-26
 ### Fixed — Buttons không render + AI vẫn fake "đã được ghi nhận"
 - **Bug v0.9.9 chưa đủ**: 

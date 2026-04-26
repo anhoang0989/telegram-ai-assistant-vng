@@ -26,6 +26,7 @@ from src.bot.keyboards import (
     approval_keyboard,
     setkey_keyboard,
     persistent_menu,
+    start_menu_keyboard,
     schedules_list_keyboard,
     notes_root_keyboard,
     model_picker_keyboard,
@@ -37,15 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 WELCOME_TEXT = (
-    "🙏 Xin chào đại hiệp, tại hạ là trợ lý AI phục vụ đại hiệp trong giang hồ vận hành game.\n\n"
-    "Để bắt đầu, xin đại hiệp gửi *Domain* (mã nhân viên VNG) của mình trong tin nhắn tiếp theo "
-    "(vd: `AnH`, `TuVH`).\n\n"
-    "Tại hạ sẽ chuyển yêu cầu tới admin để duyệt."
-)
-
-APPROVED_TEXT = (
-    "✅ Đại hiệp đã được duyệt từ trước.\n\n"
-    "Chọn loại API key muốn nhập:"
+    "🙏 Xin chào! Tại hạ là trợ lý AI cá nhân.\n\n"
+    "Gửi *Domain* (mã nhân viên VNG, vd: `AnH`) để đăng ký — admin sẽ duyệt sớm."
 )
 
 
@@ -55,10 +49,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     # Admin luôn được bypass
     if user_id == settings.admin_user_id:
+        first_name = user.first_name or "Admin"
         await update.message.reply_text(
-            "👑 Chào admin. Gõ /pending để xem các yêu cầu chờ duyệt, /members để quản lý user.\n"
-            "Gõ /help để xem đầy đủ lệnh.",
-            reply_markup=persistent_menu(is_admin=True),
+            f"👑 Chào {first_name}!",
+            reply_markup=start_menu_keyboard(),
         )
         return
 
@@ -66,10 +60,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         row = await appr_repo.get(session, user_id)
 
     if row and row.status == "approved":
-        await update.message.reply_text(APPROVED_TEXT, reply_markup=setkey_keyboard())
+        first_name = user.first_name or "đại hiệp"
         await update.message.reply_text(
-            "📋 Menu nhanh ở góc dưới.",
-            reply_markup=persistent_menu(is_admin=(user_id == settings.admin_user_id)),
+            f"👋 Chào {first_name}! Chọn chức năng:",
+            reply_markup=start_menu_keyboard(),
         )
         return
 

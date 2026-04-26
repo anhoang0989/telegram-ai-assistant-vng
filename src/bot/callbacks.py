@@ -7,6 +7,7 @@ List schedules:     ls / vs / ds
 List notes:         ln / lnt / lnd / vt / vd / dt / dtc / dn
 Approval:           approve / reject
 Setkey:             setkey
+Start menu:         sm:<action>  (sch/nte/knw/key/sta/mdl/hlp)
 """
 import logging
 from telegram import Update
@@ -19,10 +20,12 @@ from src.db.repositories import schedules as sched_repo
 from src.db.repositories import knowledge as knowledge_repo
 from src.services import note_service, schedule_service
 from src.bot import drafts
+from src.ai.quota_tracker import quota_tracker
 from src.bot.keyboards import (
     setkey_keyboard,
     approval_keyboard,
     persistent_menu,
+    start_menu_keyboard,
     schedule_confirm_keyboard,
     schedules_list_keyboard,
     schedule_detail_keyboard,
@@ -158,6 +161,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _knowledge_delete(update, context, int(parts[1]))
         elif head == "kme":
             await _move_entry_product(update, context, int(parts[1]))
+        elif head == "sm":
+            await _start_menu_action(update, context, parts[1] if len(parts) > 1 else "")
         else:
             logger.warning(f"Unknown callback data: {data}")
     except Exception as e:
@@ -873,3 +878,82 @@ async def _set_preferred_model(update: Update, context: ContextTypes.DEFAULT_TYP
         f"✅ Đã đổi model:\n\n{label}\n\nGõ /model để đổi tiếp, hoặc cứ chat bình thường.",
         reply_markup=model_picker_keyboard(model),
     )
+
+
+# ============ START MENU ============
+
+async def _start_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> None:
+    """Handle sm:* callbacks from the compact /start inline menu."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    if action == "sch":
+        async with AsyncSessionFactory() as session:
+            items = await sched_repo.get_upcoming(session, user_id, days_ahead=365)
+        if not items:
+            await query.message.reply_text("📅 Đại hiệp chưa có lịch nào sắp tới.")
+            return
+        total_pages = (len(items) + PAGE_SIZE - 1) // PAGE_SIZE
+        await query.message.reply_text(
+            f"📅 *Lịch sắp tới* ({len(items)} mục, trang 1/{total_pages})",
+            parse_mode="Markdown",
+            reply_markup=schedules_list_keyboard(items, 0, total_pages),
+        )
+
+    elif action == "nte":
+        await query.message.reply_text(
+            "📝 *Note của đại hiệp*\n\nXem theo:",
+            parse_mode="Markdown",
+            reply_markup=notes_root_keyboard(),
+        )
+
+    elif action == "knw":
+        async with AsyncSessionFactory() as session:
+            products = await knowledge_repo.list_products(session, user_id)
+        if not products:
+            await query.message.reply_text(
+                "📚 Kho tri thức đang trống.\n"
+                "Chat để thêm data/design/insight, vd: \"Lưu data JX1 ARPU tháng 4: 45k\"."
+            )
+            return
+        total = sum(c for _, c in products)
+        await query.message.reply_text(
+            f"📚 *Kho tri thức* — {total} entries / {len(products)} product\n\nChọn product:",
+            parse_mode="Markdown",
+            reply_markup=knowledge_root_keyboard(products),
+        )
+
+    elif action == "key":
+        await query.message.reply_text(
+            "🔑 Chọn loại key muốn nhập:",
+            reply_markup=setkey_keyboard(),
+        )
+
+    elif action == "sta":
+        status = quota_tracker.status(user_id)
+        tier_labels = {0: "T1 Flash Lite", 1: "T2 Flash", 2: "T3 Pro", 3: "T4 Groq"}
+        lines = ["📊 *Quota của đại hiệp hôm nay:*\n"]
+        for i, (model, s) in enumerate(status.items()):
+            label = tier_labels.get(i, model)
+            rpm_bar = "🟢" if s["rpm_used"] < s["rpm_limit"] * 0.8 else "🟡" if s["rpm_used"] < s["rpm_limit"] else "🔴"
+            rpd_bar = "🟢" if s["rpd_used"] < s["rpd_limit"] * 0.8 else "🟡" if s["rpd_used"] < s["rpd_limit"] else "🔴"
+            lines.append(
+                f"{rpm_bar} *{label}*\n"
+                f"  RPM: {s['rpm_used']}/{s['rpm_limit']} | RPD: {s['rpd_used']}/{s['rpd_limit']} {rpd_bar}"
+            )
+        await query.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    elif action == "mdl":
+        async with AsyncSessionFactory() as session:
+            current = await appr_repo.get_preferred_model(session, user_id)
+        label = "🤖 Auto" if current == "auto" else f"📌 `{current}`"
+        await query.message.reply_text(
+            f"🧠 *Chọn model AI:*\n\nHiện đang dùng: {label}\n\n"
+            "• *Auto* — tự chọn tier rẻ nhất + fallback khi hết quota\n"
+            "• *Pin model cụ thể* — luôn dùng model đó, không fallback",
+            parse_mode="Markdown",
+            reply_markup=model_picker_keyboard(current),
+        )
+
+    elif action == "hlp":
+        await query.message.reply_text("📖 Gõ /help để xem hướng dẫn đầy đủ.")

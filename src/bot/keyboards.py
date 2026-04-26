@@ -357,6 +357,25 @@ def model_picker_keyboard(current: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def start_menu_keyboard() -> InlineKeyboardMarkup:
+    """Compact inline menu shown on /start for approved users."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📅 Lịch", callback_data="sm:sch"),
+            InlineKeyboardButton("📝 Note", callback_data="sm:nte"),
+            InlineKeyboardButton("📚 Knowledge", callback_data="sm:knw"),
+        ],
+        [
+            InlineKeyboardButton("🔑 Key", callback_data="sm:key"),
+            InlineKeyboardButton("📊 Status", callback_data="sm:sta"),
+            InlineKeyboardButton("🧠 Model", callback_data="sm:mdl"),
+        ],
+        [
+            InlineKeyboardButton("❓ Help", callback_data="sm:hlp"),
+        ],
+    ])
+
+
 def snooze_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
     """Snooze reminder N phút (10 / 30 / 60)."""
     return InlineKeyboardMarkup([
