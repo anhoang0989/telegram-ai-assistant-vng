@@ -8,18 +8,16 @@ TOOLS = [
     {
         "name": "web_search",
         "description": (
-            "Tìm kiếm thông tin real-time qua Google Search grounding. "
-            "BẮT BUỘC dùng cho MỌI câu hỏi về thực tại hiện tại (anything depending on 'now') — "
-            "TUYỆT ĐỐI KHÔNG TRẢ LỜI 'tại hạ không có khả năng/chức năng tra cứu' khi tool này tồn tại! "
-            "Use cases (KHÔNG GIỚI HẠN): "
-            "thời tiết / nhiệt độ / mưa / weather, "
-            "tin tức / news, kết quả thể thao / score / lịch đấu, "
-            "giá cả / tỷ giá / chứng khoán / crypto, "
-            "sự kiện / lễ / event hôm nay, "
-            "số liệu mới / báo cáo ngành / doanh thu game cập nhật, "
-            "lịch chiếu phim / showtimes, giao thông / kẹt xe, "
-            "bất kỳ thông tin nào có thể đã thay đổi sau training. "
-            "Nếu phân vân → search trước. KHÔNG bịa, KHÔNG nói 'không có khả năng'."
+            "Tìm kiếm web real-time qua Google Search grounding. "
+            "ĐÂY LÀ TOOL FALLBACK MẶC ĐỊNH cho mọi câu hỏi factual mà bạn KHÔNG CÓ CÂU TRẢ LỜI CHÍNH XÁC, CHẮC CHẮN từ training data. "
+            "Quy tắc bắt buộc:\n"
+            "1. Trước khi định trả lời 'không biết / không có khả năng / không có chức năng / không có dữ liệu' → DỪNG, gọi web_search.\n"
+            "2. Trước khi định bịa số / ngày / tên / sự kiện → DỪNG, gọi web_search.\n"
+            "3. Câu hỏi phụ thuộc 'hôm nay / bây giờ / now / mới / cập nhật / hiện tại' → MẶC ĐỊNH search, không cần phân loại.\n"
+            "4. Phân vân giữa 'biết chắc' và 'không chắc' → cứ search, an toàn hơn bịa.\n"
+            "5. Trả 0 result → nói 'tại hạ search nhưng không tìm thấy thông tin', KHÔNG nói 'không có khả năng tra cứu'.\n"
+            "Examples (chỉ illustrative, KHÔNG giới hạn): thời tiết, giao thông, tin tức, giá cả, "
+            "thể thao, lịch chiếu, sự kiện, số liệu ngành, đối thủ ra game gì mới, ai vừa thắng giải, v.v."
         ),
         "input_schema": {
             "type": "object",
@@ -27,9 +25,9 @@ TOOLS = [
                 "query": {
                     "type": "string",
                     "description": (
-                        "Câu truy vấn tự nhiên kèm context location/time nếu cần. "
-                        "Vd: 'thời tiết Hà Nội hôm nay', 'kết quả U17 Việt Nam vs Malaysia 24/04/2026', "
-                        "'giá vàng SJC hôm nay'."
+                        "Câu truy vấn tự nhiên kèm context cần thiết (location/time/scope). "
+                        "Nếu user hỏi mơ hồ → tự thêm context phù hợp (vd: city Hà Nội, time hôm nay). "
+                        "Vd: 'thời tiết Hà Nội hôm nay', 'doanh thu game mobile VN Q1 2026'."
                     ),
                 },
             },

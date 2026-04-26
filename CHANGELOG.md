@@ -5,20 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-04-26
+### Fixed — web_search gating: đảo ngược logic từ "whitelist" → "fallback mặc định"
+- **Bug v0.9.7 chưa fix triệt để**: dù v0.9.7 đã add thêm thời tiết/giao
+  thông/lịch chiếu vào whitelist, các category KHÔNG có trong list (vd
+  "ai vừa thắng Nobel", "tốc độ Shinkansen mới") vẫn bị từ chối.
+- **Root cause**: Approach whitelist sai principle — fallback nên là
+  search, không phải refuse. Mỗi lần thêm category mới phải sửa prompt.
+- **Fix (flip toàn bộ logic)**:
+  - Web_search trở thành FALLBACK MẶC ĐỊNH cho mọi câu hỏi factual mà
+    LLM không chắc 100% từ training data
+  - Cấu trúc prompt mới:
+    1. **BLACKLIST 5 câu** tuyệt đối không được trả ("tại hạ không có
+       khả năng/chức năng/dữ liệu/internet/biết thông tin mới") →
+       phải search trước
+    2. **Heuristic 4 dòng**: phụ thuộc 'hôm nay/now/mới' → search; số
+       liệu cụ thể không chắc → search; domain ngành cần realtime →
+       search; phân vân → cứ search
+    3. **Examples** chỉ illustrative, KHÔNG phải whitelist nữa
+  - Trả 0 result → "search nhưng không tìm thấy", KHÔNG "không có khả năng"
+- **Behavior change**: bot giờ search aggressive hơn nhiều. Đổi lại,
+  không bao giờ refuse câu hỏi factual nữa. Quota web_search có thể tăng.
+
 ## [0.9.7] - 2026-04-26
-### Fixed — web_search không trigger cho thời tiết / nhiệt độ
-- **Bug**: User hỏi "thời tiết hôm nay nóng ko" → bot trả "tại hạ không
-  có khả năng tra cứu thời tiết" thay vì gọi `web_search`. Nguyên nhân:
-  tool description + SYSTEM_PROMPT chỉ liệt kê "tin tức / sự kiện / giá
-  cả / số liệu" — KHÔNG mention thời tiết → LLM bảo thủ không liên kết.
-- **Fix**:
-  - Tool `web_search` description liệt kê rõ: thời tiết / nhiệt độ / mưa /
-    weather / lịch chiếu / giao thông / tỷ giá / chứng khoán / event
-  - Thêm rule "TUYỆT ĐỐI KHÔNG trả lời 'không có khả năng/chức năng tra
-    cứu' — tool đã tồn tại, phải dùng"
-  - SYSTEM_PROMPT thêm icons + ví dụ cụ thể "thời tiết hôm nay nóng ko"
-  - Quy tắc: phân vân → cứ search. Trả 0 result → nói "không tìm thấy",
-    KHÔNG nói "không có khả năng"
+### Fixed — web_search trigger thiếu thời tiết / nhiệt độ
+- Thêm whitelist categories: thời tiết, giao thông, lịch chiếu, tỷ giá
+- (Approach này được thay thế bởi v0.9.8 — flip logic)
 
 ## [0.9.6] - 2026-04-26
 ### Added — HTML report export (mobile-first, self-contained)
