@@ -178,6 +178,7 @@ async def run_llm_turn(
         note_draft = drafts.get_note_draft(user_id)
         sched_draft = drafts.get_schedule_draft(user_id)
         know_draft = drafts.get_knowledge_draft(user_id)
+        pending_report = drafts.get_report(user_id)
 
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
@@ -188,8 +189,40 @@ async def run_llm_turn(
         if know_draft:
             await _send_knowledge_confirm(update, know_draft, response_text)
             return
+        if pending_report:
+            await _send_html_report(update, response_text)
+            return
 
     await _send_long(update, response_text)
+
+
+async def _send_html_report(update: Update, llm_text: str) -> None:
+    """Pop pending HTML report → gửi file kèm caption."""
+    import io
+    user_id = update.effective_user.id
+    report = drafts.pop_report(user_id)
+    if not report:
+        return
+    bio = io.BytesIO(report["html"].encode("utf-8"))
+    bio.name = report["filename"]
+    summary = report.get("summary") or ""
+    caption_lines = [f"📄 {report['filename']}"]
+    if summary:
+        caption_lines.append(summary[:400])
+    if llm_text and llm_text.strip():
+        caption_lines.append(llm_text.strip()[:400])
+    caption = "\n\n".join(caption_lines)[:1024]  # Telegram caption max 1024
+    try:
+        await update.message.reply_document(
+            document=bio,
+            filename=report["filename"],
+            caption=caption,
+        )
+    except Exception as e:
+        logger.error(f"send report file failed: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"⚠️ Tạo report xong nhưng gửi file lỗi: {e}\n{llm_text[:500]}"
+        )
 
 
 async def _send_long(update: Update, text: str) -> None:

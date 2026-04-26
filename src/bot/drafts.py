@@ -11,6 +11,7 @@ import uuid
 _PENDING_NOTES: dict[int, dict] = {}
 _PENDING_SCHEDULES: dict[int, dict] = {}
 _PENDING_KNOWLEDGE: dict[int, dict] = {}
+_PENDING_REPORTS: dict[int, dict] = {}
 
 # topic_hash → topic_name (để encode topic vào callback_data 64-byte limit)
 _TOPIC_HASH: dict[str, str] = {}
@@ -112,6 +113,26 @@ def update_knowledge_product(user_id: int, product: str | None) -> dict | None:
 
 def pop_knowledge_draft(user_id: int) -> dict | None:
     return _PENDING_KNOWLEDGE.pop(user_id, None)
+
+
+def put_report(user_id: int, filename: str, html: str, summary: str | None) -> None:
+    """LLM tool export_html_report → store HTML + filename ở đây.
+    Chat handler sẽ pop sau khi LLM agentic loop xong và gửi file qua send_document.
+    """
+    _PENDING_REPORTS[user_id] = {
+        "filename": filename,
+        "html": html,
+        "summary": summary,
+        "ts": time.time(),
+    }
+
+
+def get_report(user_id: int) -> dict | None:
+    return _PENDING_REPORTS.get(user_id)
+
+
+def pop_report(user_id: int) -> dict | None:
+    return _PENDING_REPORTS.pop(user_id, None)
 
 
 def hash_topic(topic: str) -> str:

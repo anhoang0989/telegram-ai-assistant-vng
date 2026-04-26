@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-04-26
+### Added — HTML report export (mobile-first, self-contained)
+- **Tool mới `export_html_report`**: LLM gọi khi user yêu cầu "báo cáo",
+  "report", "xuất report", "phân tích đầy đủ", "deep dive", "export file".
+  Schema: `title` + `summary` + `audience` + `sections: [{heading, content_markdown}, ...]` (min 2 sections).
+  Gating cứng — KHÔNG dùng cho chat thường / phân tích ngắn.
+- **`services/html_report.py` mới**:
+  - `build_report()` render sections markdown → HTML self-contained
+  - Inline CSS mobile-first: viewport meta, max-width 760px, font 16px/line-height 1.65,
+    dark mode `prefers-color-scheme`, table overflow-x scroll, code blocks
+  - Sections theo cấu trúc: 📊 Bối cảnh → 🔍 Phân tích → ⚠️ Cảnh báo → 💡 Khuyến nghị → 📝 Kết luận
+  - `safe_filename()` strip dấu VN + non-ASCII → portable file name
+  - Markdown extensions: tables, fenced_code, nl2br, sane_lists
+- **Pending report flow trong drafts.py**: `put_report` / `get_report` / `pop_report`
+  giống pattern note/schedule/knowledge draft
+- **Tool dispatcher**: build HTML → store pending → return ack cho LLM
+  (LLM chỉ trả 1-2 câu xác nhận, KHÔNG dump nội dung lại)
+- **Chat handler `_send_html_report`**: pop pending → `reply_document(BytesIO)`
+  với caption gồm filename + summary + LLM ack (max 1024 chars Telegram)
+- **SYSTEM_PROMPT** + tool dispatcher: tip pin Claude **conditional** —
+  chỉ suggest nếu user có Claude key. Không có Claude key → AI không
+  suggest, vẫn export với Gemini bình thường (chất lượng vẫn tốt với
+  Gemini Flash 3.1)
+- **Help text** thêm 1 dòng ví dụ "xuất report"
+- **Dep mới**: `markdown==3.7`
+
+### UX flow
+1. User: "/model Claude Sonnet" (optional, recommended)
+2. User: "Xuất report phân tích retention JX1 Q1"
+3. LLM tự `search_knowledge(product='JX1')` → có data
+4. LLM viết sections markdown đầy đủ → gọi `export_html_report(title, sections, summary)`
+5. Tool dispatcher build HTML + store pending
+6. LLM kết thúc với "Tại hạ đã tạo báo cáo X, đại hiệp xem file đính kèm"
+7. Chat handler send_document file `.html` đính kèm + caption tóm tắt
+8. User mở trên Telegram (browser inline) hoặc tải về xem offline mobile
+
+### Notes
+- File HTML hoàn toàn self-contained (CSS inline, không CDN, không JS) → mở
+  được offline bất cứ đâu, cả khi không internet
+- Dark mode tự động theo `prefers-color-scheme` của trình duyệt mobile
+- File extension `.html` Telegram render preview link → click mở browser ngay
+
 ## [0.9.5] - 2026-04-26
 ### Added — Multimodal ingestion: file + ảnh + URL
 - **Document upload** (.txt / .md / .csv / .tsv / .pdf / .xlsx / .log / .json):

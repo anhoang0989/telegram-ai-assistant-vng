@@ -256,6 +256,58 @@ TOOLS = [
         },
     },
 
+    # ========== HTML REPORT EXPORT ==========
+    {
+        "name": "export_html_report",
+        "description": (
+            "Tạo báo cáo HTML đầy đủ + gửi file qua Telegram. CHỈ gọi khi user nói RÕ: "
+            "'báo cáo', 'report', 'xuất report', 'phân tích đầy đủ', 'tổng hợp full', 'export file'. "
+            "TUYỆT ĐỐI KHÔNG dùng cho chat thường / câu hỏi nhanh / phân tích ngắn (→ trả lời inline). "
+            "TRƯỚC KHI GỌI: tự viết nội dung CHẤT LƯỢNG CAO theo từng section bằng markdown đầy đủ. "
+            "MEMUST workflow: nếu liên quan data user → gọi search_knowledge trước để có data thực. "
+            "TIP: nếu đại hiệp có Claude key, đề nghị pin /model Claude Sonnet 4.6 trước khi yêu cầu report — "
+            "Claude viết long-form chất lượng cao nhất."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Tiêu đề báo cáo (vd: 'Phân tích retention JX1 Q1 2026')",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Tóm tắt 1-2 câu, dùng làm caption khi gửi file Telegram",
+                },
+                "audience": {
+                    "type": "string",
+                    "description": "Đối tượng đọc (vd: 'team ops', 'leadership', 'self review'). Optional.",
+                },
+                "sections": {
+                    "type": "array",
+                    "description": (
+                        "Danh sách section của báo cáo, theo thứ tự render. Ưu tiên cấu trúc: "
+                        "📊 Bối cảnh/Data → 🔍 Phân tích → ⚠️ Cảnh báo/Phản biện → 💡 Khuyến nghị vận hành → 📝 Kết luận. "
+                        "Mỗi section nội dung markdown đầy đủ (heading, list, table, bold, blockquote, code...) — KHÔNG được rỗng."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string", "description": "Tiêu đề section"},
+                            "content_markdown": {
+                                "type": "string",
+                                "description": "Nội dung markdown của section, đầy đủ insight + số liệu nếu có",
+                            },
+                        },
+                        "required": ["heading", "content_markdown"],
+                    },
+                    "minItems": 2,
+                },
+            },
+            "required": ["title", "sections"],
+        },
+    },
+
     # ========== MEETINGS ==========
     {
         "name": "save_meeting_summary",

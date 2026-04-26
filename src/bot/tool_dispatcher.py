@@ -15,6 +15,7 @@ from src.db.repositories import knowledge as knowledge_repo
 from src.db.models import MeetingMinute, Schedule
 from src.bot import drafts
 from src.ai.providers import gemini_web_search
+from src.services import html_report
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo(settings.scheduler_timezone)
@@ -312,6 +313,49 @@ async def dispatch_tool(
                     }
                     for e in entries
                 ],
+            }
+
+        elif tool_name == "export_html_report":
+            title = (tool_input.get("title") or "Báo cáo").strip()
+            sections = tool_input.get("sections") or []
+            if len(sections) < 2:
+                return {
+                    "ok": False,
+                    "error": "Báo cáo cần ít nhất 2 sections — viết thêm rồi gọi lại",
+                }
+            html = html_report.build_report(
+                title=title,
+                sections=sections,
+                summary=tool_input.get("summary"),
+                audience=tool_input.get("audience"),
+            )
+            filename = html_report.safe_filename(title)
+            drafts.put_report(
+                user_id=user_id,
+                filename=filename,
+                html=html,
+                summary=tool_input.get("summary"),
+            )
+            # Suggest pin Claude — CHỈ nếu user có Claude key
+            _, _, claude_key = await keys_repo.get_decrypted_keys(session, user_id)
+            quality_tip = (
+                "User CÓ Claude key — gợi ý nhẹ nhàng nếu chưa pin: 'lần sau pin /model Claude Sonnet 4.6 chất lượng tốt hơn'."
+                if claude_key
+                else "User CHƯA có Claude key — KHÔNG suggest Claude. Nếu phù hợp có thể nói 'thêm Claude key qua /setkey để chất lượng cao hơn lần sau, không bắt buộc'."
+            )
+            return {
+                "ok": True,
+                "report_pending": True,
+                "filename": filename,
+                "title": title,
+                "section_count": len(sections),
+                "size_kb": round(len(html) / 1024, 1),
+                "instruction": (
+                    "Đã build HTML report xong. Chat handler sẽ tự gửi file đính kèm qua Telegram. "
+                    "KHÔNG dump lại nội dung báo cáo trong response — file đã đầy đủ. "
+                    "Trả 1-2 câu xác nhận: 'Tại hạ đã tạo báo cáo <title>, đại hiệp xem file đính kèm bên dưới.' "
+                    + quality_tip
+                ),
             }
 
         elif tool_name == "list_meetings":

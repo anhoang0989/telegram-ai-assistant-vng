@@ -123,6 +123,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• 📎 *Attach file (PDF/XLSX/TXT/CSV/MD/JSON)* + caption → tại hạ tự đọc, suy đoán product+category, tạo knowledge draft\n"
         "• 🖼️ *Gửi ảnh* (screenshot game / chart / design UI) + caption → Gemini Vision đọc → save knowledge\n"
         "• 🔗 *Paste URL* trong tin nhắn → tại hạ fetch nội dung, đọc và phản hồi (web article, blog, doc public)\n"
+        "• \"Xuất report phân tích retention JX1 Q1\" → tạo file HTML đính kèm, mobile-friendly (work với mọi model, Claude Sonnet chất lượng best nếu có key)\n"
         "• \"Phân tích trade-off của subscription model cho game RPG\" → tư vấn\n\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "📋 *LỆNH CHÍNH*\n"
