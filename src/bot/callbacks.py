@@ -24,7 +24,6 @@ from src.ai.quota_tracker import quota_tracker
 from src.bot.keyboards import (
     setkey_keyboard,
     approval_keyboard,
-    persistent_menu,
     start_menu_keyboard,
     schedule_confirm_keyboard,
     schedules_list_keyboard,
@@ -204,18 +203,12 @@ async def _handle_approval(update: Update, context: ContextTypes.DEFAULT_TYPE, d
                 chat_id=target_user_id,
                 text=(
                     "🎉 Đại hiệp đã được tại hạ duyệt!\n\n"
-                    "Bước tiếp theo — setup API keys cá nhân (miễn phí):\n"
-                    "🔹 Gemini: https://aistudio.google.com/apikey\n"
-                    "🔹 Groq: https://console.groq.com/keys\n\n"
+                    "Bước tiếp theo — setup Gemini key (miễn phí):\n"
+                    "🔹 https://aistudio.google.com/apikey\n\n"
                     "Chọn loại key muốn nhập:"
                 ),
                 reply_markup=setkey_keyboard(),
                 disable_web_page_preview=True,
-            )
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text="📋 Menu nhanh đã sẵn sàng ở góc dưới.",
-                reply_markup=persistent_menu(is_admin=(target_user_id == settings.admin_user_id)),
             )
         else:
             await context.bot.send_message(

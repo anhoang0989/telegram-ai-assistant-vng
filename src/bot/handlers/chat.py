@@ -23,7 +23,6 @@ from src.bot import drafts
 from src.bot.keyboards import (
     approval_keyboard,
     setkey_keyboard,
-    persistent_menu,
     note_topic_picker,
     note_confirm_keyboard,
     schedule_confirm_keyboard,
@@ -568,6 +567,5 @@ async def _handle_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     label = {"gemini": "Gemini", "groq": "Groq", "claude": "Claude"}.get(provider, provider)
     await update.effective_chat.send_message(
         f"✅ Tại hạ đã lưu {label} key (đã mã hoá). Tin nhắn chứa key đã xoá.\n\n"
-        "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác.",
-        reply_markup=persistent_menu(is_admin=(user_id == settings.admin_user_id)),
+        "Gõ /mykey để kiểm tra, /setkey để nhập thêm key khác."
     )

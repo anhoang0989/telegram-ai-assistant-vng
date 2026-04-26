@@ -11,7 +11,7 @@ Commands:
 """
 import logging
 from sqlalchemy import select
-from telegram import Update
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from src.config import settings
 from src.db.session import AsyncSessionFactory
@@ -25,7 +25,6 @@ from src.db.repositories import knowledge as knowledge_repo
 from src.bot.keyboards import (
     approval_keyboard,
     setkey_keyboard,
-    persistent_menu,
     start_menu_keyboard,
     schedules_list_keyboard,
     notes_root_keyboard,
@@ -50,10 +49,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Admin luôn được bypass
     if user_id == settings.admin_user_id:
         first_name = user.first_name or "Admin"
-        await update.message.reply_text(
-            f"👑 Chào {first_name}!",
-            reply_markup=start_menu_keyboard(),
-        )
+        await update.message.reply_text(f"👑 Chào {first_name}!", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Chọn chức năng:", reply_markup=start_menu_keyboard())
         return
 
     async with AsyncSessionFactory() as session:
@@ -61,10 +58,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if row and row.status == "approved":
         first_name = user.first_name or "đại hiệp"
-        await update.message.reply_text(
-            f"👋 Chào {first_name}! Chọn chức năng:",
-            reply_markup=start_menu_keyboard(),
-        )
+        await update.message.reply_text(f"👋 Chào {first_name}!", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Chọn chức năng:", reply_markup=start_menu_keyboard())
         return
 
     if row and row.status == "pending":
