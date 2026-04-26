@@ -180,24 +180,36 @@ async def run_llm_turn(
         know_draft = drafts.get_knowledge_draft(user_id)
         pending_report = drafts.get_report(user_id)
 
-        # Defensive: detect AI hallucinated "đã lưu" without actually calling save tool
+        # Defensive: detect AI hallucinated save without actually calling save tool.
+        # Phrases observed in production faking save:
         _fake_save_phrases = (
             "đã lưu thông tin", "đã lưu data", "đã lưu vào kho",
             "đã save", "đã ghi vào kho", "đã thêm vào kho",
+            "đã được ghi nhận", "đã được lưu", "lưu trực tiếp vào hệ thống",
+            "lưu thẳng vào hệ thống", "lưu vào hệ thống để đại hiệp",
+            "dữ liệu đã được", "đã được tại hạ ghi",
         )
-        rt_lower = (response_text or "").lower()
-        if any(p in rt_lower for p in _fake_save_phrases):
-            if not (know_draft or note_draft):
-                logger.warning(
-                    f"[{user_id}] HALLUCINATION: AI nói 'đã lưu' nhưng KHÔNG tool call. "
-                    f"Response head: {response_text[:200]!r}"
-                )
-                response_text = (
-                    "⚠️ Tại hạ vừa định trả lời sai (nói 'đã lưu' mà chưa thực sự lưu). "
-                    "Đại hiệp gõ lại yêu cầu — vd: 'lưu lại data này vào knowledge' — "
-                    "tại hạ sẽ tạo draft đúng cách kèm nút duyệt.\n\n"
-                    "(Response gốc của tại hạ — đã invalidate):\n\n" + (response_text or "")[:1500]
-                )
+        # Pattern fake: AI tự format bullet list giả vờ là tool result
+        # "**Sản phẩm:** X / **Danh mục:** Y / **Tiêu đề:** ..."
+        rt = response_text or ""
+        rt_lower = rt.lower()
+        has_fake_phrase = any(p in rt_lower for p in _fake_save_phrases)
+        has_tool_result_format = (
+            ("**sản phẩm:**" in rt_lower or "**product:**" in rt_lower)
+            and ("**danh mục:**" in rt_lower or "**category:**" in rt_lower)
+        )
+        if (has_fake_phrase or has_tool_result_format) and not (know_draft or note_draft):
+            logger.warning(
+                f"[{user_id}] HALLUCINATION detected (phrase={has_fake_phrase} "
+                f"toolFormat={has_tool_result_format}). "
+                f"Response head: {rt[:300]!r}"
+            )
+            response_text = (
+                "⚠️ Tại hạ vừa định trả lời sai (giả vờ đã lưu mà thực ra chưa gọi tool). "
+                "Đại hiệp gõ lại yêu cầu rõ — vd: '**lưu lại data này vào knowledge**' — "
+                "tại hạ sẽ tạo draft đúng kèm nút duyệt ✅/❌.\n\n"
+                "(Response gốc đã invalidate, không tin được):\n\n" + rt[:1500]
+            )
 
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
@@ -254,22 +266,50 @@ async def _send_long(update: Update, text: str) -> None:
 
 
 async def _send_note_topic_picker(update, session, user_id, draft, llm_text):
+    """Tách ack + preview+buttons thành 2 message để buttons luôn render."""
+    if llm_text and llm_text.strip():
+        try:
+            await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG], parse_mode="Markdown")
+        except Exception:
+            try:
+                await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG])
+            except Exception:
+                pass
+
     topics = await notes_repo.list_topics(session, user_id)
     existing = [t for (t, _) in topics]
     preview = (
         f"📝 Note draft\n{draft['title']}\n\n{draft['content']}\n\n"
         "Đại hiệp chọn topic:"
     )
-    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
-    msg = msg[-MAX_TELEGRAM_MSG:]
+    preview = preview[:MAX_TELEGRAM_MSG]
     kb = note_topic_picker(draft["draft_id"], existing, draft.get("suggested_topic"))
     try:
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
-    except Exception:
-        await update.message.reply_text(msg, reply_markup=kb)
+        await update.message.reply_text(preview, reply_markup=kb)
+        logger.info(f"[{user_id}] note picker sent, draft_id={draft['draft_id']}")
+    except Exception as e:
+        logger.error(f"[{user_id}] note picker fail: {e}")
 
 
 async def _send_knowledge_confirm(update, draft, llm_text):
+    """Gửi ack text + preview+buttons thành 2 message TÁCH RIÊNG.
+    Trước đây gộp 1 message → nếu llm_text có Markdown lỗi → fallback plain
+    text → truncate sai → buttons có thể không render. Tách 2 → tin cậy hơn.
+    """
+    user_id = update.effective_user.id
+
+    # Message 1: LLM ack (optional, có thể fail riêng không ảnh hưởng preview)
+    if llm_text and llm_text.strip():
+        try:
+            await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG], parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[{user_id}] ack markdown fail: {e}, retry plain")
+            try:
+                await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG])
+            except Exception as e2:
+                logger.error(f"[{user_id}] ack plain also fail: {e2}")
+
+    # Message 2: Preview + buttons (CRITICAL — phải render được)
     cat_label = CATEGORY_LABELS.get(draft["category"], draft["category"])
     prod_label = f"🎮 {draft['product']}" if draft.get("product") else "🌐 General"
     tags_line = (" 🏷️ " + ", ".join(draft["tags"])) if draft.get("tags") else ""
@@ -280,7 +320,7 @@ async def _send_knowledge_confirm(update, draft, llm_text):
     related = draft.get("related") or []
     related_section = ""
     if related:
-        related_lines = [f"\n\n📎 *Có {len(related)} entry liên quan cùng scope* — review để tránh duplicate:"]
+        related_lines = [f"\n\n📎 Có {len(related)} entry liên quan cùng scope — review để tránh duplicate:"]
         for r in related[:5]:
             related_lines.append(f"  • {r['title'][:80]}")
         related_section = "\n".join(related_lines)
@@ -293,13 +333,23 @@ async def _send_knowledge_confirm(update, draft, llm_text):
         f"{related_section}\n\n"
         f"Duyệt? (sai product → ✏️ Đổi product)"
     )
-    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
-    msg = msg[-MAX_TELEGRAM_MSG:]
+    preview = preview[:MAX_TELEGRAM_MSG]
     kb = knowledge_confirm_keyboard(draft["draft_id"])
     try:
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
-    except Exception:
-        await update.message.reply_text(msg, reply_markup=kb)
+        await update.message.reply_text(preview, reply_markup=kb)
+        logger.info(f"[{user_id}] knowledge preview sent, draft_id={draft['draft_id']}")
+    except Exception as e:
+        logger.error(f"[{user_id}] preview send FAILED: {e}", exc_info=True)
+        # Last resort: plain text + simple inline button
+        try:
+            await update.message.reply_text(
+                f"⚠️ Preview render lỗi nhưng draft đã chuẩn bị.\n"
+                f"Product: {draft.get('product') or 'General'} | Category: {draft['category']}\n"
+                f"Title: {draft['title'][:100]}\n\nBấm để confirm:",
+                reply_markup=kb,
+            )
+        except Exception as e2:
+            logger.error(f"[{user_id}] last-resort send fail: {e2}")
 
 
 async def _handle_move_entry_product_input(
@@ -351,8 +401,20 @@ async def _handle_new_knowledge_product_input(
 
 
 async def _send_schedule_confirm(update, draft, llm_text):
+    """Tách ack + preview+buttons thành 2 message để buttons luôn render."""
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo
+    user_id = update.effective_user.id
+
+    if llm_text and llm_text.strip():
+        try:
+            await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG], parse_mode="Markdown")
+        except Exception:
+            try:
+                await update.message.reply_text(llm_text[:MAX_TELEGRAM_MSG])
+            except Exception:
+                pass
+
     tz = ZoneInfo(settings.scheduler_timezone)
     try:
         dt = _dt.fromisoformat(draft["scheduled_at"])
@@ -367,13 +429,13 @@ async def _send_schedule_confirm(update, draft, llm_text):
     )
     if draft.get("description"):
         preview += f"\n{draft['description']}"
-    msg = (llm_text + "\n\n" + preview) if llm_text.strip() else preview
-    msg = msg[-MAX_TELEGRAM_MSG:]
+    preview = preview[:MAX_TELEGRAM_MSG]
     kb = schedule_confirm_keyboard(draft["draft_id"])
     try:
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=kb)
-    except Exception:
-        await update.message.reply_text(msg, reply_markup=kb)
+        await update.message.reply_text(preview, reply_markup=kb)
+        logger.info(f"[{user_id}] schedule preview sent, draft_id={draft['draft_id']}")
+    except Exception as e:
+        logger.error(f"[{user_id}] schedule preview fail: {e}")
 
 
 async def _handle_new_topic_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:

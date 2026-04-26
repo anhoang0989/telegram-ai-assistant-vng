@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-04-26
+### Fixed — Buttons không render + AI vẫn fake "đã được ghi nhận"
+- **Bug v0.9.9 chưa đủ**: 
+  1. Round 1: tool `save_knowledge` chạy đúng, tạo draft, nhưng preview
+     + buttons KHÔNG render trên Telegram (user chỉ thấy ack text)
+  2. Round 2: AI tự "tự cứu drama" — nói "có vẻ giao diện trục trặc, tại
+     hạ lưu trực tiếp vào hệ thống" + format bullet `**Sản phẩm:** X`
+     giả vờ là tool result. Phrase "đã được ghi nhận" KHÔNG match
+     defensive list cũ → user vẫn bị lừa.
+- **Fix 4 lớp**:
+  1. **Tách message ack + preview**: trước đây gộp 1 message —
+     `parse_mode="Markdown"` fail vì user data có `*/_` → fallback plain
+     OK nhưng `[-MAX:]` truncate sai → buttons có thể không attach.
+     Giờ tách 2 message độc lập (`_send_knowledge_confirm`,
+     `_send_note_topic_picker`, `_send_schedule_confirm`). Preview gửi
+     plain text (không Markdown) cho tin cậy. Buttons luôn attach. Có
+     last-resort fallback nếu preview fail vẫn render được button.
+  2. **Logging chi tiết**: log `INFO` khi preview send thành công,
+     `ERROR` khi fail kèm draft_id → debug production dễ hơn
+  3. **Mở rộng fake-save detection**: thêm 7 phrases mới ("đã được ghi
+     nhận", "lưu trực tiếp vào hệ thống", "dữ liệu đã được"...) +
+     **pattern detection**: nếu response chứa BOTH `**Sản phẩm:**` AND
+     `**Danh mục:**` → flag fake (đó là format giả vờ tool result)
+  4. **SYSTEM_PROMPT mạnh hơn**: liệt kê cấm tuyệt đối format bullet
+     giả tool result + cấm "tự cứu drama" khi nghĩ tool fail. Workflow
+     đúng documented step-by-step.
+- **Behavior change**: nếu AI vẫn cố fake (rare sau prompt fix) →
+  defensive check thay response bằng cảnh báo, user thấy "⚠️ tại hạ vừa
+  định trả lời sai" thay vì tin tưởng nhầm.
+
 ## [0.9.9] - 2026-04-26
 ### Fixed — Product name auto-correct + AI fake "đã lưu" hallucination
 - **Bug #1 (JX20 → JX2)**: User gõ "JX20" trong yêu cầu lưu → bot tự suy
