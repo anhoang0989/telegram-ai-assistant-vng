@@ -93,11 +93,52 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _handle_menu_shortcut(update, context, text.strip())
         return
 
-    # Flow 5: normal chat
+    # Flow 5: normal chat — phát hiện URL → fetch + augment trước
+    from src.services import url_fetcher
+    urls = url_fetcher.extract_urls(text, limit=2)
+    llm_text = text
+    conv_text = text
+    if urls:
+        await update.message.chat.send_action("typing")
+        fetched_blocks = []
+        ok_count = 0
+        for u in urls:
+            try:
+                page_text, page_title = await url_fetcher.fetch_url(u)
+                fetched_blocks.append(
+                    f"--- URL: {u}\nTitle: {page_title}\n---\n{page_text}\n--- Hết URL ---"
+                )
+                ok_count += 1
+            except Exception as e:
+                logger.warning(f"URL fetch failed {u}: {e}")
+                await update.message.reply_text(f"⚠️ Không đọc được {u[:60]}: {e}")
+        if fetched_blocks:
+            joined = "\n\n".join(fetched_blocks)
+            llm_text = f"{text}\n\n[NỘI DUNG TỪ URL ĐẠI HIỆP CHIA SẺ]\n\n{joined}"
+            conv_text = text + f" [+{ok_count} URL fetched]"
+
+    await run_llm_turn(update, context, llm_text=llm_text, conv_user_text=conv_text)
+
+
+async def run_llm_turn(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    llm_text: str,
+    conv_user_text: str | None = None,
+) -> None:
+    """Core LLM turn: gọi chat() với typing loop, render draft hoặc response.
+    Dùng chung cho text chat và document upload (synthesized message).
+
+    llm_text: text gửi cho LLM (có thể chứa file content lớn)
+    conv_user_text: text lưu vào conversation history (giữ ngắn cho doc upload).
+                    Nếu None → dùng llm_text.
+    """
+    user_id = update.effective_user.id
+    save_text = conv_user_text if conv_user_text is not None else llm_text
+
     async with AsyncSessionFactory() as session:
         gemini_key, groq_key, claude_key = await keys_repo.get_decrypted_keys(session, user_id)
 
-        # Gemini bắt buộc (workhorse free tier). Groq/Claude optional fallback.
         if not gemini_key:
             await update.message.reply_text(
                 "🔒 Đại hiệp chưa có Gemini key (bắt buộc — workhorse free tier).\n"
@@ -107,18 +148,16 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         history_records = await conv_repo.get_recent(session, user_id)
         history = [{"role": r.role, "content": r.content} for r in history_records]
-
         preferred = await appr_repo.get_preferred_model(session, user_id)
 
-        await conv_repo.save(session, user_id, "user", text)
+        await conv_repo.save(session, user_id, "user", save_text)
 
-        # v0.9.4: persistent typing indicator — refresh mỗi 4s đến khi LLM xong
         stop_typing = asyncio.Event()
         typing_task = asyncio.create_task(_typing_loop(update.message.chat, stop_typing))
 
         try:
             response_text, model_used = await chat(
-                session, user_id, history, text,
+                session, user_id, history, llm_text,
                 gemini_key=gemini_key, groq_key=groq_key, claude_key=claude_key,
                 preferred_model=preferred,
             )
@@ -136,7 +175,6 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.info(f"[{user_id}] Served by: {model_used}")
         await conv_repo.save(session, user_id, "assistant", response_text)
 
-        # Check pending drafts → attach keyboard
         note_draft = drafts.get_note_draft(user_id)
         sched_draft = drafts.get_schedule_draft(user_id)
         know_draft = drafts.get_knowledge_draft(user_id)
@@ -151,7 +189,6 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await _send_knowledge_confirm(update, know_draft, response_text)
             return
 
-    # Send normal LLM response
     await _send_long(update, response_text)
 
 

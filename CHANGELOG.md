@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-04-26
+### Added — Multimodal ingestion: file + ảnh + URL
+- **Document upload** (.txt / .md / .csv / .tsv / .pdf / .xlsx / .log / .json):
+  - `services/file_extractor.py`: PDF qua `pypdf` (theo page), XLSX qua
+    `openpyxl` (mỗi sheet thành markdown table), text-based decode UTF-8
+  - Limit 10MB file, truncate text 50K chars
+  - PDF scan / image-only → reject với message rõ
+- **Photo upload** (📷):
+  - `services/image_describe.py`: Gemini Vision (`gemini-2.5-flash`) extract
+    nội dung ảnh có cấu trúc (loại / tóm tắt / số liệu / text-OCR / insight)
+  - Lấy size lớn nhất từ Telegram photo array
+  - Limit 10MB
+- **URL sharing** (🔗): user paste URL trong tin nhắn:
+  - `services/url_fetcher.py`: `extract_urls()` regex strip trailing punct,
+    `fetch_url()` qua httpx (timeout 15s, follow redirect, max 5)
+  - HTML parse qua BeautifulSoup: prefer `<article>`/`<main>`/`<body>`,
+    strip script/style/nav/footer/aside/form
+  - Title từ `<title>` hoặc `og:title`
+  - Limit 5MB HTML, 30K chars text output
+  - Max 2 URL/message, fail 1 URL không break các URL khác
+- **Document handler `bot/handlers/document.py`**: `document_handler` +
+  `photo_handler` cùng module
+- **Refactor `chat.py`**: tách `run_llm_turn(llm_text, conv_user_text)` —
+  conv history giữ ngắn (vd "[Đã upload file] caption: ...") thay vì full content
+- URL detection trong text chat → fetch + augment llm_text với content trước khi gọi LLM
+- Help text thêm 3 dòng ví dụ (file / ảnh / URL)
+- **Deps mới**: `pypdf==5.1.0`, `openpyxl==3.1.5`, `beautifulsoup4==4.12.3`, `httpx>=0.27`
+
+### UX flow chung
+1. User upload file/ảnh hoặc paste URL (kèm caption tuỳ ý)
+2. Bot show typing/upload action
+3. Extract content → synthesize message yêu cầu LLM tự `save_knowledge` với
+   product/category infer được
+4. Preview chuẩn (📚 Knowledge draft với product+category) + ✅/❌/✏️ Đổi product
+5. User duyệt → ghi DB
+
+### Notes
+- DOCX/DOC chưa hỗ trợ — convert sang PDF/TXT trước
+- PDF scan (image-only, no text layer) → reject. OCR có thể thêm v1+
+- URL phải public accessible — bot không log in được site có auth
+- URL từ Google Drive / Notion / Confluence với link share public thường
+  redirect về login → fail. User export PDF/text rồi upload thay thế
+
 ## [0.9.4] - 2026-04-26
 ### Fixed — Time bug + Slow response + No feedback during processing
 - **#1 Time bug**: LLM tự đoán giờ → set lịch sai (vd "2 tiếng nữa" → giờ

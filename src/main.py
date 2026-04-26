@@ -20,6 +20,7 @@ from src.bot.commands import (
 )
 from src.bot.callbacks import handle_callback
 from src.bot.handlers.chat import chat_handler
+from src.bot.handlers.document import document_handler, photo_handler
 from src.bot.middleware import auth_middleware
 from src.scheduler.reminder_runner import init_scheduler
 from src.db.session import engine
@@ -57,6 +58,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("knowledge", wrap(knowledge_command)))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.Document.ALL, wrap(document_handler)))
+    app.add_handler(MessageHandler(filters.PHOTO, wrap(photo_handler)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wrap(chat_handler)))
     return app
 
