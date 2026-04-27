@@ -56,35 +56,47 @@ async def _typing_loop(chat, stop_event: asyncio.Event) -> None:
 # Menu shortcuts (text fallback — user gõ tay vẫn match dù persistent keyboard đã bỏ ở v0.9.11)
 MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status", "👑 Members"}
 
-# Phrases LLM thường hallucinate khi fake-save/fake-schedule (kết hợp khẳng định hành động xong).
-# Nếu response chứa 1 trong các pattern này MÀ không có pending draft → fake confirm → cảnh báo.
-_FAKE_SCHEDULE_PHRASES = (
-    "đã đặt lịch",
-    "đã lưu lịch",
-    "đã tạo lịch",
-    "đã tạo reminder",
-    "đã đặt reminder",
-    "đã đặt nhắc",
-    "đã set lịch",
-    "đã hẹn",
+# Phrase patterns LLM hay hallucinate khi fake-save/fake-schedule.
+# Detection chiến lược: GROUND TRUTH = tool_names_called (LLM thực sự đã gọi tool gì).
+# Nếu response có khẳng định hành động save/create xong MÀ không có save/create tool nào fire → fake.
+_CONFIRM_SCHEDULE_PHRASES = (
+    "đã đặt lịch", "đã lưu lịch", "đã tạo lịch", "đã set lịch",
+    "đã tạo reminder", "đã đặt reminder", "đã set reminder",
+    "đã thiết lập nhắc", "đã thiết lập reminder", "đã thiết lập lịch",
+    "đã đặt nhắc", "đã set nhắc", "đã hẹn", "đã đặt hẹn",
+    "sẽ thiết lập nhắc", "sẽ thiết lập reminder", "sẽ đặt lịch",
 )
-_FAKE_NOTE_PHRASES = (
-    "đã lưu note",
-    "đã ghi note",
-    "đã ghi chú",
-    "đã lưu ghi chú",
-    "đã save note",
+_CONFIRM_NOTE_PHRASES = (
+    "đã lưu note", "đã ghi note", "đã ghi chú", "đã lưu ghi chú",
+    "đã save note", "đã ghi nhận", "đã lưu lại",
 )
+_SCHEDULE_SAVE_TOOLS = {"create_schedule", "create_offset_reminder"}
+_NOTE_SAVE_TOOLS = {"save_note"}
 
 
-def _detect_fake_confirm(response_text: str, has_note_draft: bool, has_sched_draft: bool) -> str | None:
+def _detect_fake_confirm(
+    response_text: str,
+    tool_names_called: list[str],
+    has_note_draft: bool,
+    has_sched_draft: bool,
+) -> str | None:
     """Trả về kind ('schedule'|'note') nếu phát hiện fake confirm, None nếu OK.
-    Match phrase case-insensitive trên text response."""
+
+    Logic: phrase match là điều kiện cần (LLM khẳng định đã làm). Để xác nhận FAKE,
+    ngoài phrase match phải KHÔNG có evidence là tool đã thực sự gọi VÀ không có
+    pending draft (vì có draft = tool đã gọi đúng, chỉ chưa confirm DB).
+    """
     low = response_text.lower()
-    if not has_sched_draft and any(p in low for p in _FAKE_SCHEDULE_PHRASES):
+    called = set(tool_names_called)
+
+    schedule_claim = any(p in low for p in _CONFIRM_SCHEDULE_PHRASES)
+    if schedule_claim and not has_sched_draft and not (called & _SCHEDULE_SAVE_TOOLS):
         return "schedule"
-    if not has_note_draft and any(p in low for p in _FAKE_NOTE_PHRASES):
+
+    note_claim = any(p in low for p in _CONFIRM_NOTE_PHRASES)
+    if note_claim and not has_note_draft and not (called & _NOTE_SAVE_TOOLS):
         return "note"
+
     return None
 
 
@@ -176,7 +188,7 @@ async def run_llm_turn(
         typing_task = asyncio.create_task(_typing_loop(update.message.chat, stop_typing))
 
         try:
-            response_text, model_used = await chat(
+            response_text, model_used, tool_names_called = await chat(
                 session, user_id, history, llm_text,
                 gemini_key=gemini_key, groq_key=groq_key, claude_key=claude_key,
                 preferred_model=preferred,
@@ -185,6 +197,7 @@ async def run_llm_turn(
             logger.error(f"chat() error: {e}", exc_info=True)
             response_text = f"⚠️ Tại hạ gặp lỗi khi xử lý: {e}"
             model_used = "error"
+            tool_names_called = []
         finally:
             stop_typing.set()
             try:
@@ -198,20 +211,24 @@ async def run_llm_turn(
         sched_draft = drafts.get_schedule_draft(user_id)
         pending_report = drafts.get_report(user_id)
 
-        # Defensive: LLM hallucinate "đã đặt lịch / đã lưu note" mà KHÔNG có draft → fake.
+        # Defensive: LLM hallucinate khẳng định save/đặt lịch xong nhưng KHÔNG gọi tool nào
+        # và không có pending draft. Ground truth = tool_names_called list.
         fake_kind = _detect_fake_confirm(
             response_text,
+            tool_names_called=tool_names_called,
             has_note_draft=note_draft is not None,
             has_sched_draft=sched_draft is not None,
         )
         if fake_kind:
             logger.warning(
-                f"[{user_id}] FAKE CONFIRM detected (kind={fake_kind}, model={model_used}). "
-                f"Original response: {response_text[:300]}"
+                f"[{user_id}] FAKE CONFIRM detected (kind={fake_kind}, model={model_used}, "
+                f"tools_called={tool_names_called}). Original: {response_text[:300]}"
             )
             response_text = (
-                f"⚠️ Tại hạ vừa định trả lời sai (fake {fake_kind} confirm). "
-                f"Đại hiệp nói lại rõ hơn — vd 'đặt lịch họp QC mai 9h' / 'ghi lại idea X' — "
+                f"⚠️ Tại hạ vừa định trả lời sai — nói {fake_kind} đã xong nhưng "
+                f"thực tế chưa gọi tool lưu. Đại hiệp nói lại rõ hơn:\n"
+                f"• 'đặt lịch họp QC mai 9h' / 'nhắc tao 30p trước cuộc X'\n"
+                f"• 'ghi lại idea X'\n"
                 f"để tại hạ gọi tool đúng."
             )
 

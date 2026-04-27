@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.14] - 2026-04-27
+### Fixed — Hallucination ground-truth detection + create_offset_reminder rule
+- **Bug user reported**: Bot nói "Tại hạ đã thiết lập nhắc nhở trước 5 phút" cho lịch cắt tóc 16:00 nhưng KHÔNG thực sự gọi `create_offset_reminder` → 15:55 không có alert. Khi user complain, bot bịa "có sự cố hệ thống" rồi gọi NHẦM `create_schedule` (tạo duplicate 16:00) thay vì `create_offset_reminder` (15:55).
+- **Root cause**: v0.9.13 detection phrase-based + chỉ check `drafts.get_*_draft()`. Hai gap:
+  1. Phrase list không cover "đã/sẽ thiết lập" patterns
+  2. `create_offset_reminder` commit thẳng (không qua draft) → kể cả gọi tool đúng cũng không có draft → detection logic không apply
+- **Fix robust — ground truth tracking**:
+  - `llm_router.chat()` giờ trả về `(text, model, tool_names_called)` — list tool đã thực sự được gọi trong agentic loop
+  - `_detect_fake_confirm()` đổi từ "phrase + no_draft" → "phrase + no_draft + no_save_tool_called". `_SCHEDULE_SAVE_TOOLS = {create_schedule, create_offset_reminder}`, `_NOTE_SAVE_TOOLS = {save_note}`
+  - Phrase list mở rộng: "đã/sẽ thiết lập nhắc/reminder/lịch", "đã set", "đã ghi nhận"...
+  - Cảnh báo user kèm gợi ý phrase đúng để tại hạ biết gọi tool nào
+- **Fix prompt — create_offset_reminder workflow**:
+  - Workflow 4 bước rõ ràng: list_schedules → create_offset_reminder → nhận ok:true → mới được nói "đã thiết lập"
+  - Cấm cứng nói "sẽ/đã thiết lập" mà chưa gọi tool
+  - Khi user complain "ko thấy alert" → gọi `list_schedules` verify, KHÔNG bịa lý do, KHÔNG tạo duplicate qua `create_schedule`
+
 ## [0.9.13] - 2026-04-27
 ### Fixed — Anti-hallucination + daily digest tz + dead code cleanup
 - **Bug #1 (CRITICAL)**: LLM hallucinate "Tại hạ đã đặt lịch hẹn" mà không gọi tool `create_schedule`/`save_note`, khiến lịch/note không vào DB nhưng user nhầm tưởng đã lưu.

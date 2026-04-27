@@ -169,8 +169,13 @@ async def chat(
     groq_key: str | None = None,
     claude_key: str | None = None,
     preferred_model: str = "auto",
-) -> tuple[str, str]:
-    """Main entry point. Runs agentic loop with tool use. Returns (final_text, model_used).
+) -> tuple[str, str, list[str]]:
+    """Main entry point. Runs agentic loop with tool use.
+    Returns (final_text, model_used, tool_names_called).
+
+    tool_names_called là list TÊN tool LLM đã thực sự gọi trong loop —
+    chat_handler dùng để detect fake-confirm hallucination (LLM nói "đã lưu/đặt"
+    mà không có tool save/create nào fire → là fake).
 
     preferred_model:
       - 'auto'    → smart 7+2 tier fallback (default)
@@ -198,6 +203,7 @@ async def chat(
     messages.append({"role": "user", "content": user_message})
 
     last_model = "none"
+    tool_names_called: list[str] = []
     for step in range(MAX_AGENTIC_STEPS):
         if pinned:
             text, tool_calls, model = await _call_pinned(
@@ -210,11 +216,16 @@ async def chat(
         last_model = model
 
         if not tool_calls:
-            return text.strip() or "Tại hạ chưa rõ ý đại hiệp, xin nói lại cụ thể hơn.", last_model
+            return (
+                text.strip() or "Tại hạ chưa rõ ý đại hiệp, xin nói lại cụ thể hơn.",
+                last_model,
+                tool_names_called,
+            )
 
         messages.append({"role": "assistant", "content": text, "tool_calls": tool_calls})
 
         for tc in tool_calls:
+            tool_names_called.append(tc["name"])
             logger.info(f"[{user_id}] Tool call: {tc['name']}({tc['input']})")
             result = await dispatch_tool(session, user_id, tc["name"], tc["input"])
             messages.append({
@@ -225,4 +236,8 @@ async def chat(
             })
 
     logger.warning(f"[{user_id}] Hit MAX_AGENTIC_STEPS={MAX_AGENTIC_STEPS}")
-    return "Tại hạ đã xử lý xong nhưng cần thêm bước. Xin đại hiệp hỏi lại.", last_model
+    return (
+        "Tại hạ đã xử lý xong nhưng cần thêm bước. Xin đại hiệp hỏi lại.",
+        last_model,
+        tool_names_called,
+    )
