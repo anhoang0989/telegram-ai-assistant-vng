@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from sqlalchemy import select
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -7,7 +7,6 @@ from apscheduler.triggers.cron import CronTrigger
 from src.config import settings
 from src.db.session import AsyncSessionFactory
 from src.db.repositories import schedules as repo
-from src.db.repositories import user_keys as keys_repo
 from src.db.models import UserApproval, Schedule
 from src.services.schedule_service import format_reminder, TZ
 from src.bot.keyboards import snooze_keyboard
@@ -87,8 +86,10 @@ async def daily_digest() -> None:
         )
         users = list(result.scalars().all())
 
-        now = datetime.now(timezone.utc)
-        end_today = now.replace(hour=23, minute=59, second=59)
+        # Tính theo VN tz: digest 8h sáng VN → query lịch từ now_vn đến 23:59 VN cùng ngày.
+        # Bug v0.9.13 fix: trước đây dùng UTC.replace(hour=23) làm end_today = 06:59 VN ngày mai → over-include.
+        now_vn = datetime.now(TZ)
+        end_today_vn = now_vn.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         for u in users:
             try:
@@ -96,8 +97,8 @@ async def daily_digest() -> None:
                     select(Schedule)
                     .where(
                         Schedule.user_id == u.user_id,
-                        Schedule.scheduled_at >= now,
-                        Schedule.scheduled_at <= end_today,
+                        Schedule.scheduled_at >= now_vn,
+                        Schedule.scheduled_at <= end_today_vn,
                     )
                     .order_by(Schedule.scheduled_at)
                 )
@@ -106,7 +107,7 @@ async def daily_digest() -> None:
                 if not today_scheds:
                     continue  # Skip — không có lịch hôm nay
 
-                lines = [f"🌅 *Chào buổi sáng đại hiệp* — {now.astimezone(TZ).strftime('%d/%m/%Y')}\n"]
+                lines = [f"🌅 *Chào buổi sáng đại hiệp* — {now_vn.strftime('%d/%m/%Y')}\n"]
                 lines.append(f"📅 *Lịch hôm nay* ({len(today_scheds)}):")
                 for s in today_scheds:
                     local = s.scheduled_at.astimezone(TZ).strftime("%H:%M")
@@ -121,44 +122,3 @@ async def daily_digest() -> None:
                 logger.info(f"Daily digest sent to {u.user_id}")
             except Exception as e:
                 logger.error(f"Daily digest failed for {u.user_id}: {e}")
-
-
-async def weekly_knowledge_digest() -> None:
-    """Chủ nhật 9h sáng: phân tích entries tuần qua → 3 câu hỏi + 2 cảnh báo + 1 gợi ý.
-    Chỉ gửi cho user có entries trong 7 ngày qua + có Gemini key.
-    """
-    if _bot is None:
-        return
-    async with AsyncSessionFactory() as session:
-        result = await session.execute(
-            select(UserApproval).where(UserApproval.status == "approved")
-        )
-        users = list(result.scalars().all())
-
-        for u in users:
-            try:
-                entries = await knowledge_repo.recent_entries(session, u.user_id, days=7)
-                if not entries:
-                    continue  # skip nếu tuần qua user không nhập gì
-
-                gemini_key, _, _ = await keys_repo.get_decrypted_keys(session, u.user_id)
-                if not gemini_key:
-                    logger.info(f"Weekly digest skip {u.user_id}: no gemini key")
-                    continue
-
-                digest = await generate_digest(gemini_key, entries)
-                if not digest:
-                    continue
-
-                header = f"🗓️ *Weekly Knowledge Digest* — {len(entries)} entries tuần qua\n\n"
-                text = header + digest
-                # Telegram message limit 4096
-                if len(text) > 4000:
-                    text = text[:4000] + "\n…(truncated)"
-                try:
-                    await _bot.send_message(chat_id=u.user_id, text=text, parse_mode="Markdown")
-                except Exception:
-                    await _bot.send_message(chat_id=u.user_id, text=text)
-                logger.info(f"Weekly knowledge digest sent to {u.user_id} ({len(entries)} entries)")
-            except Exception as e:
-                logger.error(f"Weekly digest failed for {u.user_id}: {e}", exc_info=True)

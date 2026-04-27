@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.13] - 2026-04-27
+### Fixed — Anti-hallucination + daily digest tz + dead code cleanup
+- **Bug #1 (CRITICAL)**: LLM hallucinate "Tại hạ đã đặt lịch hẹn" mà không gọi tool `create_schedule`/`save_note`, khiến lịch/note không vào DB nhưng user nhầm tưởng đã lưu.
+  - **Fix prompt**: Thêm ANTI-HALLUCINATION block vào `SYSTEM_PROMPT` — cấm cứng các phrase "đã đặt lịch / đã lưu note / đã ghi" khi chưa gọi tool. Workflow đúng cho draft: response phải nói "đã CHUẨN BỊ, đại hiệp duyệt qua nút" thay vì "đã đặt".
+  - **Fix runtime defensive**: `chat.py` thêm `_detect_fake_confirm()` — sau khi LLM trả response, scan các fake-confirm phrases. Nếu match mà KHÔNG có pending draft → log WARNING + thay response bằng cảnh báo "tại hạ vừa định trả lời sai" để user thấy thay vì tin nhầm.
+- **Bug #2 (MEDIUM)**: `daily_digest` trong `reminder_runner.py` tính `end_today` bằng `UTC.replace(hour=23,...)` → tại 8AM VN (=01:00 UTC) end_today = 23:59 UTC = 06:59 VN ngày mai → over-include lịch nửa ngày mai. Sửa dùng `now_vn = datetime.now(TZ)` + `end_today_vn = now_vn.replace(hour=23,...)` (timezone-aware, đúng range hôm nay theo VN).
+- **Bug #3 (LOW)**: Docstring + comment trong `chat.py` vẫn nói "persistent reply-keyboard" sau khi đã bỏ ở v0.9.11. Update lại nội dung phản ánh đúng hiện tại (text fallback nếu user gõ tay).
+- **Bug #4 (CLEANUP)**: Function `weekly_knowledge_digest` còn lại trong `reminder_runner.py` từ v0.9.12 (chỉ xoá `add_job`, không xoá function body). Reference tới `knowledge_repo` và `generate_digest` đã xoá → NameError nếu được gọi (dù không bao giờ được gọi). Xoá hẳn function + import `timezone` không còn dùng.
+
 ## [0.9.12] - 2026-04-26
 ### Removed — Knowledge Base feature
 - Xoá toàn bộ knowledge base feature để nhẹ code:

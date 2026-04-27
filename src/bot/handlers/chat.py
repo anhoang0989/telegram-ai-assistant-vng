@@ -3,8 +3,10 @@ Text handler — paths:
   1. awaiting_email          → đăng ký
   2. awaiting_key            → nhập API key
   3. awaiting_note_topic     → nhập tên topic mới cho note draft
-  4. persistent menu shortcuts (📅 Lịch, 📝 Note, 🔑 Key, 📊 Status)
+  4. menu shortcuts text fallback (📅 Lịch, 📝 Note, 🔑 Key, 📊 Status — gõ tay)
   5. default                 → chat LLM. Nếu LLM tạo draft → show pick-topic / confirm keyboard.
+                              Defensive fake-confirm detection: nếu LLM nói "đã đặt/lưu" mà
+                              KHÔNG có pending draft → thay response bằng cảnh báo.
 """
 import asyncio
 import logging
@@ -51,8 +53,39 @@ async def _typing_loop(chat, stop_event: asyncio.Event) -> None:
         except asyncio.TimeoutError:
             continue
 
-# Persistent menu shortcuts → command-like behavior
+# Menu shortcuts (text fallback — user gõ tay vẫn match dù persistent keyboard đã bỏ ở v0.9.11)
 MENU_SHORTCUTS = {"📅 Lịch", "📝 Note", "🔑 Key", "📊 Status", "👑 Members"}
+
+# Phrases LLM thường hallucinate khi fake-save/fake-schedule (kết hợp khẳng định hành động xong).
+# Nếu response chứa 1 trong các pattern này MÀ không có pending draft → fake confirm → cảnh báo.
+_FAKE_SCHEDULE_PHRASES = (
+    "đã đặt lịch",
+    "đã lưu lịch",
+    "đã tạo lịch",
+    "đã tạo reminder",
+    "đã đặt reminder",
+    "đã đặt nhắc",
+    "đã set lịch",
+    "đã hẹn",
+)
+_FAKE_NOTE_PHRASES = (
+    "đã lưu note",
+    "đã ghi note",
+    "đã ghi chú",
+    "đã lưu ghi chú",
+    "đã save note",
+)
+
+
+def _detect_fake_confirm(response_text: str, has_note_draft: bool, has_sched_draft: bool) -> str | None:
+    """Trả về kind ('schedule'|'note') nếu phát hiện fake confirm, None nếu OK.
+    Match phrase case-insensitive trên text response."""
+    low = response_text.lower()
+    if not has_sched_draft and any(p in low for p in _FAKE_SCHEDULE_PHRASES):
+        return "schedule"
+    if not has_note_draft and any(p in low for p in _FAKE_NOTE_PHRASES):
+        return "note"
+    return None
 
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -160,11 +193,29 @@ async def run_llm_turn(
                 typing_task.cancel()
 
         logger.info(f"[{user_id}] Served by: {model_used}")
-        await conv_repo.save(session, user_id, "assistant", response_text)
 
         note_draft = drafts.get_note_draft(user_id)
         sched_draft = drafts.get_schedule_draft(user_id)
         pending_report = drafts.get_report(user_id)
+
+        # Defensive: LLM hallucinate "đã đặt lịch / đã lưu note" mà KHÔNG có draft → fake.
+        fake_kind = _detect_fake_confirm(
+            response_text,
+            has_note_draft=note_draft is not None,
+            has_sched_draft=sched_draft is not None,
+        )
+        if fake_kind:
+            logger.warning(
+                f"[{user_id}] FAKE CONFIRM detected (kind={fake_kind}, model={model_used}). "
+                f"Original response: {response_text[:300]}"
+            )
+            response_text = (
+                f"⚠️ Tại hạ vừa định trả lời sai (fake {fake_kind} confirm). "
+                f"Đại hiệp nói lại rõ hơn — vd 'đặt lịch họp QC mai 9h' / 'ghi lại idea X' — "
+                f"để tại hạ gọi tool đúng."
+            )
+
+        await conv_repo.save(session, user_id, "assistant", response_text)
 
         if note_draft:
             await _send_note_topic_picker(update, session, user_id, note_draft, response_text)
